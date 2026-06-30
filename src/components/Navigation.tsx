@@ -18,8 +18,7 @@ export default function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
 
-  const isAuthPage = pathname === '/login'
-  if (isAuthPage) return null
+  if (pathname === '/login') return null
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -27,70 +26,31 @@ export default function Navigation() {
   }
 
   return (
-    <nav
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '220px',
-        height: '100vh',
-        background: '#0f1a14',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '1.5rem 0',
-        zIndex: 100,
-      }}
-    >
-      {/* Logo */}
-      <div
-        style={{
-          padding: '0 1.5rem 1.5rem',
-          borderBottom: '1px solid #1e3a28',
-          marginBottom: '1rem',
-        }}
-      >
-        <span
-          style={{
-            color: '#fff',
-            fontSize: '1.4rem',
-            fontWeight: '700',
-            letterSpacing: '-0.5px',
-          }}
-        >
-          Huve
-        </span>
-        <span
-          style={{
-            display: 'block',
-            color: '#4ade80',
-            fontSize: '0.7rem',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            marginTop: '2px',
-          }}
-        >
+    <nav className="fixed top-0 left-0 h-screen w-[220px] bg-[#0a1510] flex flex-col z-50">
+
+      {/* Brand */}
+      <div className="px-6 py-6 border-b border-[#1a3a24]">
+        <span className="text-white text-xl font-bold tracking-tight">Huve</span>
+        <span className="block text-[#4ade80] text-[10px] font-medium tracking-widest uppercase mt-1">
           Primers Group
         </span>
       </div>
 
       {/* Nav items */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px', padding: '0 0.75rem' }}>
+      <div className="flex-1 flex flex-col gap-0.5 px-3 py-4 overflow-y-auto">
         {navItems.map((item) => {
           const isActive = pathname === item.href
           return (
             <Link
               key={item.href}
               href={item.href}
-              style={{
-                padding: '0.6rem 0.75rem',
-                borderRadius: '6px',
-                fontSize: '0.9rem',
-                textDecoration: 'none',
-                color: isActive ? '#fff' : '#9ca3af',
-                background: isActive ? '#1e3a28' : 'transparent',
-                fontWeight: isActive ? '600' : '400',
-                transition: 'all 0.15s',
-              }}
+              className={`
+                flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+                ${isActive
+                  ? 'bg-[#1a3a24] text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-[#1a3a24]/50'
+                }
+              `}
             >
               {item.label}
             </Link>
@@ -99,19 +59,10 @@ export default function Navigation() {
       </div>
 
       {/* Logout */}
-      <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #1e3a28' }}>
+      <div className="px-4 py-4 border-t border-[#1a3a24]">
         <button
           onClick={handleLogout}
-          style={{
-            width: '100%',
-            padding: '0.5rem',
-            background: 'transparent',
-            border: '1px solid #1e3a28',
-            borderRadius: '6px',
-            color: '#9ca3af',
-            fontSize: '0.85rem',
-            cursor: 'pointer',
-          }}
+          className="w-full px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white border border-[#1a3a24] hover:border-[#2d5a3d] transition-colors"
         >
           Log out
         </button>
