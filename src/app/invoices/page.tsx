@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logAction } from '@/lib/audit'
 
 type Client = { id: string; name: string }
 type Quotation = {
@@ -138,6 +139,12 @@ export default function InvoicesPage() {
         return
       }
     }
+    await logAction({
+  businessId,
+  action: 'created',
+  tableName: 'invoices',
+  recordId: invoice.id,
+})
 
     // Notify the client via WhatsApp
     const { data: clientRecord } = await supabase
@@ -225,6 +232,12 @@ export default function InvoicesPage() {
         return
       }
     }
+    await logAction({
+      businessId,
+      action: 'created',
+      tableName: 'invoices',
+      recordId: invoice.id,
+    })
 
     setSubmitting(false)
     setClientId('')

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logAction } from '@/lib/audit'
 
 type Invoice = {
   id: string
@@ -27,7 +28,6 @@ export default function PaymentsPage() {
   const [error, setError] = useState<string | null>(null)
   const [recordingFor, setRecordingFor] = useState<string | null>(null)
 
-  // form state per invoice
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('bank_transfer')
   const [submitting, setSubmitting] = useState(false)
@@ -80,7 +80,6 @@ export default function PaymentsPage() {
       return
     }
 
-    // 1. Insert the payment record
     const { error: paymentError } = await supabase.from('payments').insert({
       invoice_id: invoice.id,
       amount: paymentAmount,
@@ -93,7 +92,6 @@ export default function PaymentsPage() {
       return
     }
 
-    // 2. Recompute total paid and update invoice status accordingly
     const alreadyPaid = totalPaidFor(invoice.id)
     const newTotalPaid = alreadyPaid + paymentAmount
     const newStatus =
@@ -106,6 +104,23 @@ export default function PaymentsPage() {
 
     if (updateError) {
       setError(updateError.message)
+    }
+
+    // Log the payment action
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('business_id')
+      .eq('id', user!.id)
+      .single()
+
+    if (profile) {
+      await logAction({
+        businessId: profile.business_id,
+        action: 'payment_recorded',
+        tableName: 'payments',
+        recordId: invoice.id,
+      })
     }
 
     setSubmitting(false)
