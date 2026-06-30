@@ -139,6 +139,24 @@ export default function InvoicesPage() {
       }
     }
 
+    // Notify the client via WhatsApp
+    const { data: clientRecord } = await supabase
+      .from('clients')
+      .select('name, phone')
+      .eq('id', quotation.client_id)
+      .single()
+
+    if (clientRecord?.phone) {
+      await fetch('/api/whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: clientRecord.phone,
+          message: `Hi ${clientRecord.name}, your invoice for ₦${Number(quotation.total).toLocaleString()} has been generated. Please find payment details attached. Thank you for your business!`,
+        }),
+      })
+    }
+
     setGenerating(null)
     loadData()
   }
