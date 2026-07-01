@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import TopBar from '@/components/TopBar'
+import RightPanel from '@/components/RightPanel'
+import { Briefcase, Shield, ClipboardCheck, RotateCcw, Globe, MoreHorizontal } from 'lucide-react'
 
 type Client = { id: string; name: string }
 type Engagement = {
@@ -10,8 +13,25 @@ type Engagement = {
   title: string
   type: string | null
   status: string
+  start_date: string | null
+  end_date: string | null
   client_id: string
   clients: { name: string } | null
+}
+
+const typeConfig: Record<string, { label: string; icon: React.ReactNode }> = {
+  pentest: { label: 'Pen-Test', icon: <Shield size={13} /> },
+  audit: { label: 'Audit', icon: <ClipboardCheck size={13} /> },
+  retainer: { label: 'Retainer', icon: <RotateCcw size={13} /> },
+  web_build: { label: 'Development', icon: <Globe size={13} /> },
+  other: { label: 'Other', icon: <Briefcase size={13} /> },
+}
+
+const statusConfig: Record<string, { label: string; classes: string }> = {
+  active: { label: 'ACTIVE', classes: 'bg-green-100 text-green-700' },
+  completed: { label: 'COMPLETED', classes: 'bg-gray-100 text-gray-500' },
+  on_hold: { label: 'ON HOLD', classes: 'bg-yellow-100 text-yellow-700' },
+  cancelled: { label: 'ARCHIVED', classes: 'bg-gray-100 text-gray-400' },
 }
 
 export default function EngagementsPage() {
@@ -20,44 +40,32 @@ export default function EngagementsPage() {
   const [engagements, setEngagements] = useState<Engagement[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // form state
   const [title, setTitle] = useState('')
   const [type, setType] = useState('')
   const [clientId, setClientId] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState(false)
 
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      router.push('/login')
-      return
-    }
+    if (!user) { router.push('/login'); return }
 
-    const { data: clientsData } = await supabase
-      .from('clients')
-      .select('id, name')
-      .order('name')
-
+    const { data: clientsData } = await supabase.from('clients').select('id, name').order('name')
     setClients(clientsData ?? [])
 
-    const { data: engagementsData, error: engagementsError } = await supabase
+    const { data: engagementsData, error: engError } = await supabase
       .from('engagements')
-      .select('id, title, type, status, client_id, clients(name)')
+      .select('id, title, type, status, start_date, end_date, client_id, clients(name)')
       .order('created_at', { ascending: false })
 
-    if (engagementsError) {
-      setError(engagementsError.message)
-    } else {
-      setEngagements((engagementsData as unknown as Engagement[]) ?? [])
-    }
-
+    if (engError) setError(engError.message)
+    else setEngagements((engagementsData as unknown as Engagement[]) ?? [])
     setLoading(false)
   }
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  useEffect(() => { loadData() }, [])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -66,103 +74,183 @@ export default function EngagementsPage() {
 
     const { data: { user } } = await supabase.auth.getUser()
     const { data: profile } = await supabase
-      .from('profiles')
-      .select('business_id')
-      .eq('id', user!.id)
-      .single()
+      .from('profiles').select('business_id').eq('id', user!.id).single()
 
     const { error: insertError } = await supabase.from('engagements').insert({
       business_id: profile!.business_id,
       client_id: clientId,
       title,
-      type,
+      type: type || null,
       status: 'active',
+      start_date: startDate || null,
+      end_date: endDate || null,
     })
 
     setSubmitting(false)
+    if (insertError) { setError(insertError.message); return }
 
-    if (insertError) {
-      setError(insertError.message)
-      return
-    }
-
-    setTitle('')
-    setType('')
-    setClientId('')
+    setTitle(''); setType(''); setClientId(''); setStartDate(''); setEndDate('')
+    setSuccess(true)
+    setTimeout(() => setSuccess(false), 3000)
     loadData()
   }
 
-  if (loading) {
-    return <main style={{ padding: '2rem', fontFamily: 'sans-serif' }}>Loading...</main>
-  }
-
   return (
-    <main style={{ maxWidth: '800px', margin: '2rem auto', fontFamily: 'sans-serif', padding: '0 1rem' }}>
-      <h1 style={{ marginBottom: '1.5rem' }}>Engagements</h1>
+    <div>
+      <TopBar
+        title="Engagements"
+        subtitle="Central dashboard for monitoring active security assessments and project lifecycles."
+        breadcrumb={['Workspace', 'Operations', 'Engagements']}
+      />
 
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-
-      <form
-        onSubmit={handleCreate}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.75rem',
-          marginBottom: '2rem',
-          border: '1px solid #eee',
-          padding: '1rem',
-          borderRadius: '8px',
-        }}
-      >
-        <h2 style={{ fontSize: '1rem' }}>New Engagement</h2>
-        <select
-          value={clientId}
-          onChange={(e) => setClientId(e.target.value)}
-          required
-          style={{ padding: '0.5rem' }}
-        >
-          <option value="">Select client...</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        <input
-          type="text"
-          placeholder="Title (e.g. Q3 Penetration Test)"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-          style={{ padding: '0.5rem' }}
-        />
-        <select value={type} onChange={(e) => setType(e.target.value)} style={{ padding: '0.5rem' }}>
-          <option value="">Select type...</option>
-          <option value="pentest">Penetration Test</option>
-          <option value="audit">Security Audit</option>
-          <option value="retainer">Retainer</option>
-          <option value="web_build">Web Build</option>
-          <option value="other">Other</option>
-        </select>
-        <button
-          type="submit"
-          disabled={submitting}
-          style={{ padding: '0.6rem', background: '#111', color: '#fff', border: 'none', borderRadius: '4px' }}
-        >
-          {submitting ? 'Creating...' : 'Create Engagement'}
-        </button>
-      </form>
-
-      <h2 style={{ marginBottom: '1rem' }}>All Engagements</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {engagements.map((eng) => (
-          <div key={eng.id} style={{ border: '1px solid #eee', borderRadius: '8px', padding: '1rem' }}>
-            <p style={{ fontWeight: 'bold' }}>{eng.title}</p>
-            <p style={{ fontSize: '0.85rem', color: '#666' }}>
-              {eng.clients?.name} · {eng.type ?? 'No type'} · {eng.status}
-            </p>
+      <div className="px-6 py-6">
+        {error && (
+          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
+            {error}
           </div>
-        ))}
-        {engagements.length === 0 && <p>No engagements yet.</p>}
+        )}
+
+        {loading ? (
+          <p className="text-gray-400 text-sm">Loading engagements...</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            {engagements.map((eng) => {
+              const typeInfo = typeConfig[eng.type ?? 'other'] ?? typeConfig.other
+              const statusInfo = statusConfig[eng.status] ?? statusConfig.active
+              return (
+                <div
+                  key={eng.id}
+                  className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:border-green-200 hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                        {eng.clients?.name}
+                      </p>
+                      <p className="text-base font-semibold text-gray-900">{eng.title}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded tracking-wider ${statusInfo.classes}`}>
+                        {statusInfo.label}
+                      </span>
+                      <button className="text-gray-300 hover:text-gray-500 transition-colors">
+                        <MoreHorizontal size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                        Service Type
+                      </p>
+                      <div className="flex items-center gap-1.5 text-gray-600 text-sm">
+                        <span className="text-gray-400">{typeInfo.icon}</span>
+                        {typeInfo.label}
+                      </div>
+                    </div>
+                    {(eng.start_date || eng.end_date) && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                          Timeline
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {eng.start_date ? new Date(eng.start_date).toLocaleDateString('en-NG', { month: 'short', day: 'numeric' }) : '—'}
+                          {' — '}
+                          {eng.end_date ? new Date(eng.end_date).toLocaleDateString('en-NG', { month: 'short', day: 'numeric' }) : 'Ongoing'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+
+            {engagements.length === 0 && (
+              <div className="col-span-2 text-center py-16 text-gray-400">
+                <Briefcase size={32} className="mx-auto mb-3 text-gray-200" />
+                <p className="text-sm">No engagements yet. Create your first one.</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-    </main>
+
+      <RightPanel title="New Engagement" subtitle="Initialize a new engagement protocol.">
+        <form onSubmit={handleCreate} className="space-y-4">
+          {success && (
+            <div className="px-3 py-2 bg-green-50 border border-green-100 rounded-lg text-sm text-green-700">
+              Engagement created.
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Target Client</label>
+            <select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              required
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors bg-white"
+            >
+              <option value="">Select from roster...</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Engagement Label</label>
+            <input
+              type="text"
+              placeholder="e.g. Q4 Network Audit"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Service Protocol</label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors bg-white"
+            >
+              <option value="">Select engagement type...</option>
+              <option value="pentest">Penetration Test</option>
+              <option value="audit">Security Audit</option>
+              <option value="retainer">Retainer</option>
+              <option value="web_build">Web Build</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">End Date</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {submitting ? 'Creating...' : 'Provision Engagement'}
+          </button>
+          <p className="text-xs text-gray-400 text-center">Client success managers will be notified immediately.</p>
+        </form>
+      </RightPanel>
+    </div>
   )
 }

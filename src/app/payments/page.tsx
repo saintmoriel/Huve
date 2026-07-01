@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/audit'
+import TopBar from '@/components/TopBar'
+import { CreditCard, CheckCircle } from 'lucide-react'
 
 type Invoice = {
   id: string
@@ -27,46 +29,29 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [recordingFor, setRecordingFor] = useState<string | null>(null)
-
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState('bank_transfer')
   const [submitting, setSubmitting] = useState(false)
 
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      router.push('/login')
-      return
-    }
+    if (!user) { router.push('/login'); return }
 
-    const { data: invoicesData, error: invoicesError } = await supabase
-      .from('invoices')
-      .select('id, status, total, clients(name)')
-      .order('created_at', { ascending: false })
-
-    if (invoicesError) {
-      setError(invoicesError.message)
-    } else {
-      setInvoices((invoicesData as unknown as Invoice[]) ?? [])
-    }
+    const { data: invoicesData, error: invError } = await supabase
+      .from('invoices').select('id, status, total, clients(name)').order('created_at', { ascending: false })
+    if (invError) setError(invError.message)
+    else setInvoices((invoicesData as unknown as Invoice[]) ?? [])
 
     const { data: paymentsData } = await supabase
-      .from('payments')
-      .select('id, amount, method, paid_at, invoice_id')
-      .order('paid_at', { ascending: false })
-
+      .from('payments').select('id, amount, method, paid_at, invoice_id').order('paid_at', { ascending: false })
     setPayments(paymentsData ?? [])
     setLoading(false)
   }
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  useEffect(() => { loadData() }, [])
 
   function totalPaidFor(invoiceId: string) {
-    return payments
-      .filter((p) => p.invoice_id === invoiceId)
-      .reduce((sum, p) => sum + Number(p.amount), 0)
+    return payments.filter((p) => p.invoice_id === invoiceId).reduce((sum, p) => sum + Number(p.amount), 0)
   }
 
   async function handleRecordPayment(invoice: Invoice) {
@@ -74,54 +59,20 @@ export default function PaymentsPage() {
     setError(null)
 
     const paymentAmount = parseFloat(amount)
-    if (!paymentAmount || paymentAmount <= 0) {
-      setError('Enter a valid payment amount.')
-      setSubmitting(false)
-      return
-    }
+    if (!paymentAmount || paymentAmount <= 0) { setError('Enter a valid amount.'); setSubmitting(false); return }
 
-    const { error: paymentError } = await supabase.from('payments').insert({
-      invoice_id: invoice.id,
-      amount: paymentAmount,
-      method,
-    })
-
-    if (paymentError) {
-      setError(paymentError.message)
-      setSubmitting(false)
-      return
-    }
+    const { error: paymentError } = await supabase.from('payments').insert({ invoice_id: invoice.id, amount: paymentAmount, method })
+    if (paymentError) { setError(paymentError.message); setSubmitting(false); return }
 
     const alreadyPaid = totalPaidFor(invoice.id)
     const newTotalPaid = alreadyPaid + paymentAmount
-    const newStatus =
-      newTotalPaid >= Number(invoice.total) ? 'paid' : newTotalPaid > 0 ? 'partially_paid' : 'unpaid'
+    const newStatus = newTotalPaid >= Number(invoice.total) ? 'paid' : 'partially_paid'
 
-    const { error: updateError } = await supabase
-      .from('invoices')
-      .update({ status: newStatus })
-      .eq('id', invoice.id)
+    await supabase.from('invoices').update({ status: newStatus }).eq('id', invoice.id)
 
-    if (updateError) {
-      setError(updateError.message)
-    }
-
-    // Log the payment action
     const { data: { user } } = await supabase.auth.getUser()
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('business_id')
-      .eq('id', user!.id)
-      .single()
-
-    if (profile) {
-      await logAction({
-        businessId: profile.business_id,
-        action: 'payment_recorded',
-        tableName: 'payments',
-        recordId: invoice.id,
-      })
-    }
+    const { data: profile } = await supabase.from('profiles').select('business_id').eq('id', user!.id).single()
+    if (profile) await logAction({ businessId: profile.business_id, action: 'payment_recorded', tableName: 'payments', recordId: invoice.id })
 
     setSubmitting(false)
     setRecordingFor(null)
@@ -130,73 +81,125 @@ export default function PaymentsPage() {
     loadData()
   }
 
-  if (loading) {
-    return <main style={{ padding: '2rem', fontFamily: 'sans-serif' }}>Loading...</main>
-  }
+  if (loading) return (
+    <div>
+      <TopBar title="Payments" subtitle="Track and record payments against outstanding invoices." breadcrumb={['Workspace', 'Finance', 'Payments']} />
+      <div className="px-6 py-6"><p className="text-gray-400 text-sm">Loading...</p></div>
+    </div>
+  )
 
   return (
-    <main style={{ maxWidth: '800px', margin: '2rem auto', fontFamily: 'sans-serif', padding: '0 1rem' }}>
-      <h1 style={{ marginBottom: '1.5rem' }}>Payments</h1>
+    <div>
+      <TopBar
+        title="Payments"
+        subtitle="Track and record payments against outstanding invoices."
+        breadcrumb={['Workspace', 'Finance', 'Payments']}
+      />
 
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <div className="px-6 py-6">
+        {error && <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">{error}</div>}
 
-      <h2 style={{ marginBottom: '1rem' }}>Invoices</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {invoices.map((inv) => {
-          const paid = totalPaidFor(inv.id)
-          const remaining = Number(inv.total) - paid
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Client</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Total</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Paid</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Remaining</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
+                <th className="px-5 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.map((inv) => {
+                const paid = totalPaidFor(inv.id)
+                const remaining = Number(inv.total) - paid
+                const isPaid = inv.status === 'paid'
 
-          return (
-            <div key={inv.id} style={{ border: '1px solid #eee', borderRadius: '8px', padding: '1rem' }}>
-              <p style={{ fontWeight: 'bold' }}>
-                {inv.clients?.name} — ₦{Number(inv.total).toLocaleString()}
-              </p>
-              <p style={{ fontSize: '0.85rem', color: '#666' }}>
-                Status: {inv.status} · Paid: ₦{paid.toLocaleString()} · Remaining: ₦{remaining.toLocaleString()}
-              </p>
-
-              {inv.status !== 'paid' && (
-                <div style={{ marginTop: '0.75rem' }}>
-                  {recordingFor === inv.id ? (
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <input
-                        type="number"
-                        placeholder="Amount (₦)"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        style={{ padding: '0.4rem', width: '140px' }}
-                      />
-                      <select value={method} onChange={(e) => setMethod(e.target.value)} style={{ padding: '0.4rem' }}>
-                        <option value="bank_transfer">Bank Transfer</option>
-                        <option value="card">Card</option>
-                        <option value="cash">Cash</option>
-                      </select>
-                      <button
-                        onClick={() => handleRecordPayment(inv)}
-                        disabled={submitting}
-                        style={{ padding: '0.4rem 0.8rem', background: '#111', color: '#fff', border: 'none', borderRadius: '4px' }}
-                      >
-                        {submitting ? 'Saving...' : 'Save'}
-                      </button>
-                      <button onClick={() => setRecordingFor(null)} style={{ padding: '0.4rem 0.8rem' }}>
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setRecordingFor(inv.id)}
-                      style={{ padding: '0.4rem 0.8rem', background: '#eee', border: 'none', borderRadius: '4px' }}
-                    >
-                      Record Payment
-                    </button>
-                  )}
-                </div>
+                return (
+                  <>
+                    <tr key={inv.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
+                            <CreditCard size={14} className="text-gray-400" />
+                          </div>
+                          <span className="text-sm font-medium text-gray-800">{inv.clients?.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-sm font-semibold text-gray-900">₦{Number(inv.total).toLocaleString()}</td>
+                      <td className="px-5 py-4 text-sm text-green-600 font-medium">₦{paid.toLocaleString()}</td>
+                      <td className="px-5 py-4 text-sm text-red-500 font-medium">₦{remaining.toLocaleString()}</td>
+                      <td className="px-5 py-4">
+                        {isPaid ? (
+                          <span className="flex items-center gap-1.5 text-xs font-semibold text-green-600">
+                            <CheckCircle size={13} /> Paid
+                          </span>
+                        ) : (
+                          <span className="text-xs font-semibold text-orange-500 uppercase tracking-wider">
+                            {inv.status === 'partially_paid' ? 'Partial' : 'Unpaid'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        {!isPaid && (
+                          <button
+                            onClick={() => setRecordingFor(recordingFor === inv.id ? null : inv.id)}
+                            className="px-3 py-1.5 text-xs font-medium bg-[#0a1510] hover:bg-[#1a3a24] text-white rounded-lg transition-colors"
+                          >
+                            Record Payment
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {recordingFor === inv.id && (
+                      <tr key={`${inv.id}-form`} className="bg-gray-50 border-b border-gray-100">
+                        <td colSpan={6} className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="number"
+                              placeholder="Amount (₦)"
+                              value={amount}
+                              onChange={(e) => setAmount(e.target.value)}
+                              className="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 w-40"
+                            />
+                            <select
+                              value={method}
+                              onChange={(e) => setMethod(e.target.value)}
+                              className="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 bg-white"
+                            >
+                              <option value="bank_transfer">Bank Transfer</option>
+                              <option value="card">Card</option>
+                              <option value="cash">Cash</option>
+                            </select>
+                            <button
+                              onClick={() => handleRecordPayment(inv)}
+                              disabled={submitting}
+                              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              {submitting ? 'Saving...' : 'Save Payment'}
+                            </button>
+                            <button
+                              onClick={() => setRecordingFor(null)}
+                              className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                )
+              })}
+              {invoices.length === 0 && (
+                <tr><td colSpan={6} className="text-center py-16 text-gray-400 text-sm">No invoices yet.</td></tr>
               )}
-            </div>
-          )
-        })}
-        {invoices.length === 0 && <p>No invoices yet.</p>}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </main>
+    </div>
   )
 }
