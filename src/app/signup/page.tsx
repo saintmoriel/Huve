@@ -43,44 +43,32 @@ export default function SignupPage() {
     })
 
     if (authError || !authData.user) {
-      setError(authError?.message ?? 'Signup failed.')
+      if (authError?.message?.toLowerCase().includes('already registered')) {
+        setError('An account with this email already exists. Sign in instead.')
+      } else {
+        setError(authError?.message ?? 'Signup failed.')
+      }
       setLoading(false)
       return
     }
 
-    // 2. Create business
-    const { data: business, error: businessError } = await supabase
-      .from('businesses')
-      .insert({ name: companyName })
-      .select()
-      .single()
+    // 2. Create business + profile atomically via secure function
+    const { error: setupError } = await supabase.rpc('create_business_and_profile', {
+      p_user_id: authData.user.id,
+      p_business_name: companyName,
+      p_full_name: fullName,
+    })
 
-    if (businessError || !business) {
-      setError(businessError?.message ?? 'Failed to create workspace.')
-      setLoading(false)
-      return
-    }
-
-    // 3. Create profile linking user to business
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .insert({
-        id: authData.user.id,
-        business_id: business.id,
-        full_name: fullName,
-        role: 'owner',
-      })
-
-    if (profileError) {
-      setError(profileError.message)
+    if (setupError) {
+      setError(setupError.message)
       setLoading(false)
       return
     }
 
     setLoading(false)
 
-    // If email confirmation is on, show verify screen
-    // If off, go straight to dashboard
+    // If session exists (email confirm off), go straight to dashboard
+    // Otherwise show verify screen
     if (authData.session) {
       router.push('/dashboard')
     } else {
@@ -97,7 +85,9 @@ export default function SignupPage() {
           </div>
           <h1 className="text-xl font-semibold text-gray-900 mb-2">Check your email</h1>
           <p className="text-sm text-gray-500 mb-6">
-            We sent a confirmation link to <span className="font-medium text-gray-700">{email}</span>. Click the link to activate your Huve workspace.
+            We sent a confirmation link to{' '}
+            <span className="font-medium text-gray-700">{email}</span>.
+            Click the link to activate your Huve workspace.
           </p>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-left space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">What happens next</p>
@@ -115,7 +105,10 @@ export default function SignupPage() {
             </div>
           </div>
           <p className="text-xs text-gray-400 mt-6">
-            Wrong email? <Link href="/signup" className="text-green-600 hover:underline">Start over</Link>
+            Wrong email?{' '}
+            <Link href="/signup" className="text-green-600 hover:underline">
+              Start over
+            </Link>
           </p>
         </div>
       </main>
@@ -125,7 +118,6 @@ export default function SignupPage() {
   return (
     <main className="min-h-screen bg-[#f8faf8] flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        {/* Brand */}
         <div className="flex items-center gap-3 mb-8">
           <div className="w-10 h-10 bg-[#0a1510] rounded-xl flex items-center justify-center">
             <ShieldCheck size={20} className="text-green-400" />
@@ -136,10 +128,11 @@ export default function SignupPage() {
           </div>
         </div>
 
-        {/* Card */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
           <h1 className="text-xl font-semibold text-gray-900 mb-1">Create your workspace</h1>
-          <p className="text-sm text-gray-400 mb-6">Set up your business on Huve in under a minute.</p>
+          <p className="text-sm text-gray-400 mb-6">
+            Set up your business on Huve in under a minute.
+          </p>
 
           <form onSubmit={handleSignup} className="space-y-4">
             <div>

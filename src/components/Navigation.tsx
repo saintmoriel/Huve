@@ -28,7 +28,8 @@ export default function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
 
-  if (pathname === '/login') return null
+  const authPages = ['/login', '/signup', '/forgot-password', '/reset-password']
+if (authPages.includes(pathname)) return null
 
   async function handleLogout() {
     await supabase.auth.signOut()
