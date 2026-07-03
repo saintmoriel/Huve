@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import Navigation from '@/components/Navigation'
-import MainContent from '@/components/MainContent'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -22,11 +21,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={inter.variable}>
-      <body style={{ fontFamily: 'var(--font-inter), system-ui, sans-serif' }}>
+      <body style={{ fontFamily: 'var(--font-inter), system-ui, sans-serif', backgroundColor: '#f8faf8' }}>
         <Navigation />
-        <MainContent>
+        <div style={{ paddingTop: '64px', minHeight: '100vh' }}>
           {children}
-        </MainContent>
+        </div>
       </body>
     </html>
   )
