@@ -19,7 +19,16 @@ import {
   Pie,
   Cell,
 } from 'recharts'
-import { TrendingUp, TrendingDown, Users, Briefcase, FileText, CreditCard, Receipt, } from 'lucide-react'
+import {
+  TrendingUp,
+  TrendingDown,
+  Users,
+  Briefcase,
+  FileText,
+  CreditCard,
+  Receipt,
+  X,
+} from 'lucide-react'
 
 const cashflowData = [
   { month: 'Jan', invoiced: 850000, paid: 620000 },
@@ -46,18 +55,59 @@ const invoiceStatusData = [
 ]
 
 const recentActivity = [
-  { action: 'Invoice generated', client: 'PayFlux Technologies', amount: '₦400,000', time: '2 hours ago', type: 'invoice' },
-  { action: 'Payment recorded', client: 'Northbridge Microfinance', amount: '₦650,000', time: '5 hours ago', type: 'payment' },
-  { action: 'Quotation sent', client: 'Lagos State Ministry of Trade', amount: '₦1,200,000', time: 'Yesterday', type: 'quotation' },
-  { action: 'New engagement', client: 'Marketplace Naija', amount: '—', time: 'Yesterday', type: 'engagement' },
-  { action: 'Payment recorded', client: 'Veritas University SU', amount: '₦150,000', time: '2 days ago', type: 'payment' },
+  { action: 'Invoice generated', client: 'PayFlux Technologies', amount: '₦400,000', time: '2 hours ago', type: 'invoice', href: '/invoices' },
+  { action: 'Payment recorded', client: 'Northbridge Microfinance', amount: '₦650,000', time: '5 hours ago', type: 'payment', href: '/payments' },
+  { action: 'Quotation sent', client: 'Lagos State Ministry of Trade', amount: '₦1,200,000', time: 'Yesterday', type: 'quotation', href: '/quotations' },
+  { action: 'New engagement', client: 'Marketplace Naija', amount: '—', time: 'Yesterday', type: 'engagement', href: '/engagements' },
+  { action: 'Payment recorded', client: 'Veritas University SU', amount: '₦150,000', time: '2 days ago', type: 'payment', href: '/payments' },
 ]
 
-const activityTypeConfig: Record<string, { color: string; bg: string }> = {
-  invoice: { color: 'text-blue-600', bg: 'bg-blue-50' },
-  payment: { color: 'text-green-600', bg: 'bg-green-50' },
-  quotation: { color: 'text-purple-600', bg: 'bg-purple-50' },
-  engagement: { color: 'text-orange-600', bg: 'bg-orange-50' },
+const activityTypeConfig: Record<string, { color: string; bg: string; letter: string }> = {
+  invoice: { color: 'text-blue-600', bg: 'bg-blue-50', letter: 'I' },
+  payment: { color: 'text-green-600', bg: 'bg-green-50', letter: 'P' },
+  quotation: { color: 'text-purple-600', bg: 'bg-purple-50', letter: 'Q' },
+  engagement: { color: 'text-orange-600', bg: 'bg-orange-50', letter: 'E' },
+}
+
+const drilldownData: Record<string, { title: string; items: { label: string; value: string; sub?: string }[] }> = {
+  revenue: {
+    title: 'Revenue Breakdown (YTD)',
+    items: [
+      { label: 'Q1 (Jan–Mar)', value: '₦2,350,000', sub: '+8% vs last year' },
+      { label: 'Q2 (Apr–Jun)', value: '₦4,250,000', sub: '+15% vs Q1' },
+      { label: 'Top client', value: 'PayFlux Technologies', sub: '₦1,800,000 collected' },
+      { label: 'Avg invoice size', value: '₦420,000', sub: 'Across 15 invoices' },
+      { label: 'Collection rate', value: '84%', sub: 'Of all invoiced amount' },
+    ],
+  },
+  invoices: {
+    title: 'Outstanding Invoices',
+    items: [
+      { label: 'Northbridge Microfinance', value: '₦600,000', sub: 'Overdue 12 days' },
+      { label: 'Lagos State Ministry', value: '₦450,000', sub: 'Due in 3 days' },
+      { label: 'Marketplace Naija', value: '₦200,000', sub: 'Partially paid' },
+      { label: 'Total outstanding', value: '₦1,250,000', sub: '3 invoices pending' },
+    ],
+  },
+  clients: {
+    title: 'Active Clients',
+    items: [
+      { label: 'Northbridge Microfinance Bank', value: 'Banking', sub: 'Network security retainer' },
+      { label: 'PayFlux Technologies', value: 'Fintech', sub: 'Penetration testing' },
+      { label: 'Veritas University SU', value: 'Education', sub: 'Web platform build' },
+      { label: 'Lagos State Ministry of Trade', value: 'Government', sub: 'Compliance review' },
+      { label: 'Marketplace Naija', value: 'E-commerce', sub: 'Security maintenance' },
+    ],
+  },
+  engagements: {
+    title: 'Active Engagements',
+    items: [
+      { label: 'Q3 Payment Infrastructure Pentest', value: 'Active', sub: 'PayFlux Technologies' },
+      { label: 'Network Security Audit', value: 'Active', sub: 'Northbridge Microfinance' },
+      { label: 'E-commerce Security Maintenance', value: 'Active', sub: 'Marketplace Naija' },
+      { label: 'On schedule', value: '84%', sub: 'Across all engagements' },
+    ],
+  },
 }
 
 function formatNaira(value: number) {
@@ -86,6 +136,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const [businessName, setBusinessName] = useState('Your Business')
   const [loading, setLoading] = useState(true)
+  const [activeDrilldown, setActiveDrilldown] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -133,11 +184,54 @@ export default function DashboardPage() {
     )
   }
 
+  const statCards = [
+    {
+      key: 'revenue',
+      icon: CreditCard,
+      iconBg: 'bg-green-50',
+      iconColor: 'text-green-600',
+      trend: '+12%',
+      trendUp: true,
+      value: '₦6.6M',
+      label: 'Total Revenue (YTD)',
+    },
+    {
+      key: 'invoices',
+      icon: FileText,
+      iconBg: 'bg-red-50',
+      iconColor: 'text-red-500',
+      trend: '3 overdue',
+      trendUp: false,
+      value: '₦1.25M',
+      label: 'Outstanding Invoices',
+    },
+    {
+      key: 'clients',
+      icon: Users,
+      iconBg: 'bg-blue-50',
+      iconColor: 'text-blue-600',
+      trend: '+2 this month',
+      trendUp: true,
+      value: '5',
+      label: 'Active Clients',
+    },
+    {
+      key: 'engagements',
+      icon: Briefcase,
+      iconBg: 'bg-purple-50',
+      iconColor: 'text-purple-600',
+      trend: '84% on track',
+      trendUp: true,
+      value: '3',
+      label: 'Active Engagements',
+    },
+  ]
+
   return (
     <div>
       <TopBar
         title={businessName}
-        subtitle="Overview — June 2025"
+        subtitle="Operations overview — June 2025"
         breadcrumb={['Workspace', 'Dashboard']}
       />
 
@@ -145,62 +239,78 @@ export default function DashboardPage() {
 
         {/* Stat cards */}
         <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-9 h-9 bg-green-50 rounded-lg flex items-center justify-center">
-                <CreditCard size={17} className="text-green-600" />
+          {statCards.map((card) => (
+            <button
+              key={card.key}
+              onClick={() => setActiveDrilldown(activeDrilldown === card.key ? null : card.key)}
+              className={`bg-white rounded-xl border shadow-sm p-5 text-left transition-all hover:shadow-md ${
+                activeDrilldown === card.key
+                  ? 'border-green-300 ring-2 ring-green-100'
+                  : 'border-gray-100 hover:border-green-200'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className={`w-9 h-9 ${card.iconBg} rounded-lg flex items-center justify-center`}>
+                  <card.icon size={17} className={card.iconColor} />
+                </div>
+                <span className={`flex items-center gap-1 text-xs font-medium ${
+                  card.trendUp ? 'text-green-600' : 'text-red-500'
+                }`}>
+                  {card.trendUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                  {card.trend}
+                </span>
               </div>
-              <span className="flex items-center gap-1 text-xs font-medium text-green-600">
-                <TrendingUp size={12} /> +12%
-              </span>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">₦6.6M</p>
-            <p className="text-xs text-gray-500 mt-1">Total Revenue (YTD)</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-9 h-9 bg-red-50 rounded-lg flex items-center justify-center">
-                <FileText size={17} className="text-red-500" />
-              </div>
-              <span className="flex items-center gap-1 text-xs font-medium text-red-500">
-                <TrendingDown size={12} /> 3 overdue
-              </span>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">₦1.25M</p>
-            <p className="text-xs text-gray-500 mt-1">Outstanding Invoices</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center">
-                <Users size={17} className="text-blue-600" />
-              </div>
-              <span className="flex items-center gap-1 text-xs font-medium text-green-600">
-                <TrendingUp size={12} /> +2 this month
-              </span>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">5</p>
-            <p className="text-xs text-gray-500 mt-1">Active Clients</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-9 h-9 bg-purple-50 rounded-lg flex items-center justify-center">
-                <Briefcase size={17} className="text-purple-600" />
-              </div>
-              <span className="flex items-center gap-1 text-xs font-medium text-green-600">
-                <TrendingUp size={12} /> 84% on track
-              </span>
-            </div>
-            <p className="text-2xl font-bold text-gray-900">3</p>
-            <p className="text-xs text-gray-500 mt-1">Active Engagements</p>
-          </div>
+              <p className="text-2xl font-bold text-gray-900">{card.value}</p>
+              <p className="text-xs text-gray-500 mt-1">{card.label}</p>
+              <p className="text-[10px] text-green-600 mt-1.5 font-medium">
+                {activeDrilldown === card.key ? 'Click to close ↑' : 'Click for details →'}
+              </p>
+            </button>
+          ))}
         </div>
+
+        {/* Drilldown panel */}
+        {activeDrilldown && drilldownData[activeDrilldown] && (
+          <div className="bg-white rounded-xl border border-green-200 shadow-sm p-5 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-800">
+                {drilldownData[activeDrilldown].title}
+              </h3>
+              <button
+                onClick={() => setActiveDrilldown(null)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {drilldownData[activeDrilldown].items.map((item, i) => (
+                <div key={i} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">{item.label}</p>
+                    {item.sub && <p className="text-xs text-gray-400 mt-0.5">{item.sub}</p>}
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900 ml-3 shrink-0">{item.value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <Link
+                href={
+                  activeDrilldown === 'revenue' ? '/payments' :
+                  activeDrilldown === 'invoices' ? '/invoices' :
+                  activeDrilldown === 'clients' ? '/clients' : '/engagements'
+                }
+                className="text-xs text-green-600 hover:underline font-medium"
+              >
+                View all →
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Charts row */}
         <div className="grid grid-cols-3 gap-4">
-          {/* Cashflow chart */}
           <div className="col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -230,7 +340,6 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </div>
 
-          {/* Invoice status */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-gray-800 mb-1">Invoice Status</h2>
             <p className="text-xs text-gray-400 mb-4">Breakdown by collection status</p>
@@ -262,12 +371,14 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
+            <Link href="/invoices" className="block mt-4 text-xs text-green-600 hover:underline font-medium">
+              View all invoices →
+            </Link>
           </div>
         </div>
 
         {/* Revenue trend + Recent activity */}
         <div className="grid grid-cols-3 gap-4">
-          {/* Revenue trend */}
           <div className="col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -304,21 +415,26 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </div>
 
-          {/* Recent activity */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-gray-800 mb-4">Recent Activity</h2>
             <div className="space-y-3">
               {recentActivity.map((item, i) => {
                 const config = activityTypeConfig[item.type]
                 return (
-                  <div key={i} className="flex items-start gap-3">
+                  <Link
+                    key={i}
+                    href={item.href}
+                    className="flex items-start gap-3 hover:bg-gray-50 rounded-lg p-1.5 -mx-1.5 transition-colors group"
+                  >
                     <div className={`w-7 h-7 rounded-lg ${config.bg} flex items-center justify-center shrink-0 mt-0.5`}>
                       <span className={`text-[10px] font-bold ${config.color}`}>
-                        {item.type[0].toUpperCase()}
+                        {config.letter}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-800 truncate">{item.action}</p>
+                      <p className="text-xs font-medium text-gray-800 truncate group-hover:text-green-700 transition-colors">
+                        {item.action}
+                      </p>
                       <p className="text-xs text-gray-400 truncate">{item.client}</p>
                     </div>
                     <div className="text-right shrink-0">
@@ -327,10 +443,13 @@ export default function DashboardPage() {
                       )}
                       <p className="text-[10px] text-gray-400">{item.time}</p>
                     </div>
-                  </div>
+                  </Link>
                 )
               })}
             </div>
+            <Link href="/payments" className="block mt-4 pt-3 border-t border-gray-100 text-xs text-green-600 hover:underline font-medium">
+              View all activity →
+            </Link>
           </div>
         </div>
 
@@ -352,7 +471,9 @@ export default function DashboardPage() {
                 <div className={`w-8 h-8 rounded-lg ${action.color} flex items-center justify-center shrink-0`}>
                   <action.icon size={15} />
                 </div>
-                <span className="text-sm text-gray-600 group-hover:text-gray-900 font-medium">{action.label}</span>
+                <span className="text-sm text-gray-600 group-hover:text-gray-900 font-medium">
+                  {action.label}
+                </span>
               </Link>
             ))}
           </div>
