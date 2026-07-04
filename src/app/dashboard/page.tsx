@@ -19,7 +19,7 @@ import {
   Pie,
   Cell,
 } from 'recharts'
-import { TrendingUp, TrendingDown, Users, Briefcase, FileText, CreditCard } from 'lucide-react'
+import { TrendingUp, TrendingDown, Users, Briefcase, FileText, CreditCard, Receipt, } from 'lucide-react'
 
 const cashflowData = [
   { month: 'Jan', invoiced: 850000, paid: 620000 },
@@ -137,7 +137,7 @@ export default function DashboardPage() {
     <div>
       <TopBar
         title={businessName}
-        subtitle="Operations overview — June 2025"
+        subtitle="Overview — June 2025"
         breadcrumb={['Workspace', 'Dashboard']}
       />
 

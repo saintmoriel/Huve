@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/audit'
@@ -118,8 +118,8 @@ export default function PaymentsPage() {
                 const isPaid = inv.status === 'paid'
 
                 return (
-                  <>
-                    <tr key={inv.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                  <React.Fragment key={inv.id}>
+                    <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
@@ -154,7 +154,7 @@ export default function PaymentsPage() {
                       </td>
                     </tr>
                     {recordingFor === inv.id && (
-                      <tr key={`${inv.id}-form`} className="bg-gray-50 border-b border-gray-100">
+                      <tr className="bg-gray-50 border-b border-gray-100">
                         <td colSpan={6} className="px-5 py-4">
                           <div className="flex items-center gap-3">
                             <input
@@ -190,7 +190,7 @@ export default function PaymentsPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 )
               })}
               {invoices.length === 0 && (
