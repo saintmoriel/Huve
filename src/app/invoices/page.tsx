@@ -143,7 +143,7 @@ export default function InvoicesPage() {
       const path = `${businessId}/${invoice.id}.pdf`
       const { error: uploadError } = await supabase.storage
         .from('invoices')
-        .upload(path, new Blob([pdfBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
+        .upload(path, new Blob([pdfBytes as BlobPart], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
 
       if (uploadError) {
         console.error('Invoice PDF upload error:', uploadError)
