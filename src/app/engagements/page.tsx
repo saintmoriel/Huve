@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import TopBar from '@/components/TopBar'
 import RightPanel from '@/components/RightPanel'
-import { Briefcase, Shield, ClipboardCheck, RotateCcw, Globe, MoreHorizontal } from 'lucide-react'
+import { Briefcase, Shield, ClipboardCheck, RotateCcw, Globe, MoreHorizontal, Plus } from 'lucide-react'
 
 type Client = { id: string; name: string }
 type Engagement = {
@@ -40,6 +40,7 @@ export default function EngagementsPage() {
   const [engagements, setEngagements] = useState<Engagement[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [type, setType] = useState('')
   const [clientId, setClientId] = useState('')
@@ -67,6 +68,15 @@ export default function EngagementsPage() {
 
   useEffect(() => { loadData() }, [])
 
+  function resetForm() {
+    setTitle(''); setType(''); setClientId(''); setStartDate(''); setEndDate('')
+  }
+
+  function openPanel() {
+    setError(null)
+    setPanelOpen(true)
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
@@ -89,11 +99,14 @@ export default function EngagementsPage() {
     setSubmitting(false)
     if (insertError) { setError(insertError.message); return }
 
-    setTitle(''); setType(''); setClientId(''); setStartDate(''); setEndDate('')
+    resetForm()
+    setPanelOpen(false)
     setSuccess(true)
     setTimeout(() => setSuccess(false), 3000)
     loadData()
   }
+
+  const hasClients = clients.length > 0
 
   return (
     <div>
@@ -101,17 +114,57 @@ export default function EngagementsPage() {
         title="Engagements"
         subtitle="Central dashboard for monitoring active security assessments and project lifecycles."
         breadcrumb={['Workspace', 'Operations', 'Engagements']}
+        action={engagements.length > 0 ? { label: 'New Engagement', onClick: openPanel } : undefined}
       />
 
       <div className="px-6 py-6">
-        {error && (
+        {success && (
+          <div className="mb-4 px-4 py-3 bg-green-50 border border-green-100 rounded-lg text-sm text-green-700">
+            Engagement created.
+          </div>
+        )}
+        {error && !panelOpen && (
           <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
             {error}
           </div>
         )}
 
         {loading ? (
-          <p className="text-gray-400 text-sm">Loading engagements...</p>
+          <div className="grid grid-cols-2 gap-4">
+            {[...Array(2)].map((_, i) => (
+              <div key={i} className="h-40 bg-gray-100 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : engagements.length === 0 ? (
+          // Empty state
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+              <Briefcase size={28} className="text-gray-300" />
+            </div>
+            <h3 className="text-base font-semibold text-gray-700 mb-1">No engagements yet</h3>
+            <p className="text-sm text-gray-400 mb-6 max-w-xs">
+              {hasClients
+                ? 'Provision your first engagement to start tracking assessments and project timelines.'
+                : 'Add a client first, then provision an engagement to track assessments and timelines.'}
+            </p>
+            {hasClients ? (
+              <button
+                onClick={openPanel}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Plus size={15} />
+                New Engagement
+              </button>
+            ) : (
+              <button
+                onClick={() => router.push('/clients')}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Plus size={15} />
+                Add a client
+              </button>
+            )}
+          </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
             {engagements.map((eng) => {
@@ -165,22 +218,20 @@ export default function EngagementsPage() {
                 </div>
               )
             })}
-
-            {engagements.length === 0 && (
-              <div className="col-span-2 text-center py-16 text-gray-400">
-                <Briefcase size={32} className="mx-auto mb-3 text-gray-200" />
-                <p className="text-sm">No engagements yet. Create your first one.</p>
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      <RightPanel title="New Engagement" subtitle="Initialize a new engagement protocol.">
+      <RightPanel
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        title="New Engagement"
+        subtitle="Initialize a new engagement protocol."
+      >
         <form onSubmit={handleCreate} className="space-y-4">
-          {success && (
-            <div className="px-3 py-2 bg-green-50 border border-green-100 rounded-lg text-sm text-green-700">
-              Engagement created.
+          {error && (
+            <div className="px-3 py-2.5 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
+              {error}
             </div>
           )}
           <div>

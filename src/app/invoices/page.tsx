@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/audit'
 import TopBar from '@/components/TopBar'
 import RightPanel from '@/components/RightPanel'
+import { generateInvoicePdf } from '@/lib/invoicePdf'
 import { Receipt, Plus, X, Zap } from 'lucide-react'
 
 type Client = { id: string; name: string }
@@ -42,6 +43,7 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [clientId, setClientId] = useState('')
   const [dueDate, setDueDate] = useState('')
@@ -83,33 +85,86 @@ export default function InvoicesPage() {
     setError(null)
     const businessId = await getBusinessId()
 
+    // 1. Pull the quotation's line items (used for both the invoice and the PDF)
     const { data: qLineItems, error: qliError } = await supabase
       .from('quotation_line_items').select('description, quantity, unit_price').eq('quotation_id', quotation.id)
     if (qliError) { setError(qliError.message); setGenerating(null); return }
 
+    // 2. Create the invoice (the DB trigger assigns invoice_number automatically)
     const { data: invoice, error: invError } = await supabase
       .from('invoices')
       .insert({ business_id: businessId, client_id: quotation.client_id, quotation_id: quotation.id, status: 'unpaid', total: quotation.total })
-      .select().single()
+      .select('id, invoice_number, created_at, due_date, total')
+      .single()
     if (invError || !invoice) { setError(invError?.message ?? 'Failed'); setGenerating(null); return }
 
-    if (qLineItems && qLineItems.length > 0) {
+    // 3. Copy line items onto the invoice
+    const items = (qLineItems ?? []) as LineItem[]
+    if (items.length > 0) {
       const { error: iliError } = await supabase.from('invoice_line_items').insert(
-        qLineItems.map((item) => ({ invoice_id: invoice.id, description: item.description, quantity: item.quantity, unit_price: item.unit_price }))
+        items.map((item: LineItem) => ({ invoice_id: invoice.id, description: item.description, quantity: item.quantity, unit_price: item.unit_price }))
       )
       if (iliError) { setError(iliError.message); setGenerating(null); return }
     }
 
     await logAction({ businessId, action: 'created', tableName: 'invoices', recordId: invoice.id })
 
-    const { data: clientRecord } = await supabase.from('clients').select('name, phone').eq('id', quotation.client_id).single()
+    // 4. Fetch business + client details for the PDF
+    const { data: business } = await supabase
+      .from('businesses').select('name, address, phone, email').eq('id', businessId).single()
+    const { data: clientRecord } = await supabase
+      .from('clients').select('name, phone').eq('id', quotation.client_id).single()
+
+    const invoiceLabel = `INV-${String(invoice.invoice_number ?? 0).padStart(4, '0')}`
+
+    // 5. Generate the PDF, upload it, get a public URL
+    let pdfUrl: string | null = null
+    try {
+      const pdfBytes = await generateInvoicePdf({
+        invoiceLabel,
+        createdAt: invoice.created_at,
+        dueDate: invoice.due_date,
+        total: Number(invoice.total),
+        business: {
+          name: business?.name ?? '',
+          address: business?.address ?? null,
+          phone: business?.phone ?? null,
+          email: business?.email ?? null,
+        },
+        clientName: clientRecord?.name ?? 'Client',
+        lineItems: items,
+      })
+
+      // --- DIAGNOSTIC: who does the upload think we are? ---
+      const { data: authCheck } = await supabase.auth.getUser()
+      console.log('Upload will run as user:', authCheck.user?.id ?? 'NOT AUTHENTICATED')
+      // ----------------------------------------------------
+
+      const path = `${businessId}/${invoice.id}.pdf`
+      const { error: uploadError } = await supabase.storage
+        .from('invoices')
+        .upload(path, new Blob([pdfBytes], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' })
+
+      if (uploadError) {
+        console.error('Invoice PDF upload error:', uploadError)
+      } else {
+        const { data: pub } = supabase.storage.from('invoices').getPublicUrl(path)
+        pdfUrl = pub.publicUrl
+      }
+    } catch (e) {
+      console.error('PDF/upload failed:', e)
+      pdfUrl = null
+    }
+
+    // 6. Send WhatsApp with the PDF attached (if we have a client phone)
     if (clientRecord?.phone) {
       await fetch('/api/whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: clientRecord.phone,
-          message: `Hi ${clientRecord.name}, your invoice for ₦${Number(quotation.total).toLocaleString()} has been generated. Please find payment details attached. Thank you for your business!`,
+          message: `Hi ${clientRecord.name}, your invoice ${invoiceLabel} for ₦${Number(quotation.total).toLocaleString()} has been generated. We'll follow up shortly with payment details. Thank you for your business!`,
+          mediaUrl: pdfUrl,
         }),
       })
     }
@@ -130,6 +185,17 @@ export default function InvoicesPage() {
   const computedTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
   const invoicedQuotationIds = new Set(invoices.map((inv) => inv.quotation_id).filter(Boolean))
   const availableQuotations = quotations.filter((q) => !invoicedQuotationIds.has(q.id))
+  const hasClients = clients.length > 0
+
+  function resetForm() {
+    setClientId(''); setDueDate('')
+    setLineItems([{ description: '', quantity: 1, unit_price: 0 }])
+  }
+
+  function openPanel() {
+    setError(null)
+    setPanelOpen(true)
+  }
 
   async function handleCreateStandalone(e: React.FormEvent) {
     e.preventDefault()
@@ -151,10 +217,14 @@ export default function InvoicesPage() {
 
     await logAction({ businessId, action: 'created', tableName: 'invoices', recordId: invoice.id })
     setSubmitting(false)
-    setClientId(''); setDueDate('')
-    setLineItems([{ description: '', quantity: 1, unit_price: 0 }])
+    resetForm()
+    setPanelOpen(false)
     loadData()
   }
+
+  // Show the empty state only when there is genuinely nothing to act on:
+  // no invoices AND no quotations available to generate from.
+  const showEmptyState = !loading && invoices.length === 0 && availableQuotations.length === 0
 
   return (
     <div>
@@ -162,10 +232,11 @@ export default function InvoicesPage() {
         title="Invoices"
         subtitle="Generate, track, and manage client invoices across all engagements."
         breadcrumb={['Workspace', 'Finance', 'Invoices']}
+        action={invoices.length > 0 ? { label: 'New Invoice', onClick: openPanel } : undefined}
       />
 
       <div className="px-6 py-6 space-y-6">
-        {error && (
+        {error && !panelOpen && (
           <div className="px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">{error}</div>
         )}
 
@@ -196,10 +267,44 @@ export default function InvoicesPage() {
           </div>
         )}
 
-        {/* Invoices table */}
+        {/* Invoices table / states */}
         {loading ? (
-          <p className="text-gray-400 text-sm">Loading...</p>
-        ) : (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        ) : showEmptyState ? (
+          // Empty state
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+              <Receipt size={28} className="text-gray-300" />
+            </div>
+            <h3 className="text-base font-semibold text-gray-700 mb-1">No invoices yet</h3>
+            <p className="text-sm text-gray-400 mb-6 max-w-xs">
+              {hasClients
+                ? 'Create a standalone invoice, or generate one from an accepted quotation.'
+                : 'Add a client first, then create an invoice or generate one from a quotation.'}
+            </p>
+            {hasClients ? (
+              <button
+                onClick={openPanel}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Plus size={15} />
+                New Invoice
+              </button>
+            ) : (
+              <button
+                onClick={() => router.push('/clients')}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Plus size={15} />
+                Add a client
+              </button>
+            )}
+          </div>
+        ) : invoices.length > 0 ? (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
             <table className="w-full">
               <thead>
@@ -235,43 +340,84 @@ export default function InvoicesPage() {
                     </tr>
                   )
                 })}
-                {invoices.length === 0 && (
-                  <tr><td colSpan={4} className="text-center py-16 text-gray-400 text-sm">No invoices yet.</td></tr>
-                )}
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </div>
 
-      <RightPanel title="New Invoice" subtitle="Create a standalone invoice for a client.">
+      <RightPanel
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        title="New Invoice"
+        subtitle="Create a standalone invoice for a client."
+      >
         <form onSubmit={handleCreateStandalone} className="space-y-4">
+          {error && (
+            <div className="px-3 py-2.5 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
+              {error}
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Client</label>
-            <select value={clientId} onChange={(e) => setClientId(e.target.value)} required className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 bg-white">
+            <select value={clientId} onChange={(e) => setClientId(e.target.value)} required className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 bg-white">
               <option value="">Select client...</option>
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Due Date</label>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500" />
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Line Items</label>
             <div className="space-y-2">
               {lineItems.map((item, i) => (
-                <div key={i} className="space-y-1.5 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                  <input type="text" placeholder="Description" value={item.description} onChange={(e) => updateLineItem(i, 'description', e.target.value)} className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="Qty" value={item.quantity} onChange={(e) => updateLineItem(i, 'quantity', e.target.value)} className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white" min={0} />
-                    <input type="number" placeholder="Unit Price" value={item.unit_price} onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)} className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white" min={0} />
+                <div key={i} className="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-500 mb-1">Description</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Penetration testing — Q4"
+                      value={item.description}
+                      onChange={(e) => updateLineItem(i, 'description', e.target.value)}
+                      className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white"
+                    />
                   </div>
-                  {lineItems.length > 1 && (
-                    <button type="button" onClick={() => setLineItems((prev) => prev.filter((_, idx) => idx !== i))} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600">
-                      <X size={12} /> Remove
-                    </button>
-                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-500 mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        placeholder="1"
+                        value={item.quantity}
+                        onChange={(e) => updateLineItem(i, 'quantity', e.target.value)}
+                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white"
+                        min={0}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-500 mb-1">Price per unit (₦)</label>
+                      <input
+                        type="number"
+                        placeholder="0"
+                        value={item.unit_price}
+                        onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)}
+                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white"
+                        min={0}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-gray-400">
+                      Line total: <span className="font-semibold text-gray-600">₦{(item.quantity * item.unit_price).toLocaleString()}</span>
+                    </span>
+                    {lineItems.length > 1 && (
+                      <button type="button" onClick={() => setLineItems((prev) => prev.filter((_, idx) => idx !== i))} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600">
+                        <X size={12} /> Remove
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
               <button type="button" onClick={() => setLineItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0 }])} className="flex items-center gap-1.5 text-xs text-green-600 hover:text-green-700 font-medium">

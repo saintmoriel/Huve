@@ -32,6 +32,7 @@ export default function QuotationsPage() {
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
   const [clientId, setClientId] = useState('')
@@ -71,6 +72,16 @@ export default function QuotationsPage() {
 
   const computedTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
 
+  function resetForm() {
+    setClientId(''); setEngagementId('')
+    setLineItems([{ description: '', quantity: 1, unit_price: 0 }])
+  }
+
+  function openPanel() {
+    setError(null)
+    setPanelOpen(true)
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
@@ -102,14 +113,15 @@ export default function QuotationsPage() {
     }
 
     setSubmitting(false)
-    setClientId(''); setEngagementId('')
-    setLineItems([{ description: '', quantity: 1, unit_price: 0 }])
+    resetForm()
+    setPanelOpen(false)
     setSuccess(true)
-    setTimeout(() => setSuccess(false), 3000)
+    setTimeout(() => setSuccess(false), 10000)
     loadData()
   }
 
   const filteredEngagements = clientId ? engagements.filter((e) => e.client_id === clientId) : engagements
+  const hasClients = clients.length > 0
 
   return (
     <div>
@@ -117,15 +129,61 @@ export default function QuotationsPage() {
         title="Quotations"
         subtitle="Create and manage service quotations for your clients."
         breadcrumb={['Workspace', 'Finance', 'Quotations']}
+        action={quotations.length > 0 ? { label: 'New Quotation', onClick: openPanel } : undefined}
       />
 
       <div className="px-6 py-6">
-        {error && (
+        {success && (
+          <div className="mb-4 px-4 py-3 bg-green-50 border border-green-100 rounded-lg flex items-center justify-between gap-4">
+            <span className="text-sm text-green-700">Quotation created. You can now generate an invoice from it.</span>
+            <button
+              onClick={() => router.push('/invoices')}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              Go to Invoices →
+            </button>
+          </div>
+        )}
+        {error && !panelOpen && (
           <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">{error}</div>
         )}
 
         {loading ? (
-          <p className="text-gray-400 text-sm">Loading...</p>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        ) : quotations.length === 0 ? (
+          // Empty state
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+              <FileText size={28} className="text-gray-300" />
+            </div>
+            <h3 className="text-base font-semibold text-gray-700 mb-1">No quotations yet</h3>
+            <p className="text-sm text-gray-400 mb-6 max-w-xs">
+              {hasClients
+                ? 'Issue your first quotation. Accepted quotations can be converted into invoices in one click.'
+                : 'Add a client first, then issue a quotation you can later convert into an invoice.'}
+            </p>
+            {hasClients ? (
+              <button
+                onClick={openPanel}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Plus size={15} />
+                New Quotation
+              </button>
+            ) : (
+              <button
+                onClick={() => router.push('/clients')}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Plus size={15} />
+                Add a client
+              </button>
+            )}
+          </div>
         ) : (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
             <table className="w-full">
@@ -162,24 +220,22 @@ export default function QuotationsPage() {
                     </tr>
                   )
                 })}
-                {quotations.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="text-center py-16 text-gray-400 text-sm">
-                      No quotations yet.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      <RightPanel title="New Quotation" subtitle="Issue a quotation for a client engagement.">
+      <RightPanel
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        title="New Quotation"
+        subtitle="Issue a quotation for a client engagement."
+      >
         <form onSubmit={handleCreate} className="space-y-4">
-          {success && (
-            <div className="px-3 py-2 bg-green-50 border border-green-100 rounded-lg text-sm text-green-700">
-              Quotation created.
+          {error && (
+            <div className="px-3 py-2.5 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
+              {error}
             </div>
           )}
           <div>
@@ -188,7 +244,7 @@ export default function QuotationsPage() {
               value={clientId}
               onChange={(e) => { setClientId(e.target.value); setEngagementId('') }}
               required
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 bg-white"
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 bg-white"
             >
               <option value="">Select client...</option>
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -199,7 +255,7 @@ export default function QuotationsPage() {
             <select
               value={engagementId}
               onChange={(e) => setEngagementId(e.target.value)}
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 bg-white"
+              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 bg-white"
             >
               <option value="">No engagement</option>
               {filteredEngagements.map((eng) => <option key={eng.id} value={eng.id}>{eng.title}</option>)}
@@ -209,41 +265,55 @@ export default function QuotationsPage() {
             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5">Line Items</label>
             <div className="space-y-2">
               {lineItems.map((item, i) => (
-                <div key={i} className="space-y-1.5 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                  <input
-                    type="text"
-                    placeholder="Description"
-                    value={item.description}
-                    onChange={(e) => updateLineItem(i, 'description', e.target.value)}
-                    className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
+                <div key={i} className="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-500 mb-1">Description</label>
                     <input
-                      type="number"
-                      placeholder="Qty"
-                      value={item.quantity}
-                      onChange={(e) => updateLineItem(i, 'quantity', e.target.value)}
+                      type="text"
+                      placeholder="e.g. Penetration testing — Q4"
+                      value={item.description}
+                      onChange={(e) => updateLineItem(i, 'description', e.target.value)}
                       className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white"
-                      min={0}
-                    />
-                    <input
-                      type="number"
-                      placeholder="Unit Price"
-                      value={item.unit_price}
-                      onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)}
-                      className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white"
-                      min={0}
                     />
                   </div>
-                  {lineItems.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setLineItems((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600"
-                    >
-                      <X size={12} /> Remove
-                    </button>
-                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-500 mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        placeholder="1"
+                        value={item.quantity}
+                        onChange={(e) => updateLineItem(i, 'quantity', e.target.value)}
+                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white"
+                        min={0}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-500 mb-1">Price per unit (₦)</label>
+                      <input
+                        type="number"
+                        placeholder="0"
+                        value={item.unit_price}
+                        onChange={(e) => updateLineItem(i, 'unit_price', e.target.value)}
+                        className="w-full px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white"
+                        min={0}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-gray-400">
+                      Line total: <span className="font-semibold text-gray-600">₦{(item.quantity * item.unit_price).toLocaleString()}</span>
+                    </span>
+                    {lineItems.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setLineItems((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600"
+                      >
+                        <X size={12} /> Remove
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
               <button

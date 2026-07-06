@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import TopBar from '@/components/TopBar'
-import RightPanel from '@/components/RightPanel'
 import {
   Building2,
   Mail,
@@ -92,9 +91,7 @@ export default function ClientsPage() {
     setSubmitting(false)
     if (insertError) { setError(insertError.message); return }
 
-    setName(''); setContactPerson(''); setIndustry('')
-    setEmail(''); setPhone(''); setWebsite('')
-    setAddress(''); setNotes('')
+    resetForm()
     setSuccess(true)
     setShowModal(false)
     setTimeout(() => setSuccess(false), 3000)
@@ -108,6 +105,16 @@ export default function ClientsPage() {
     setError(null)
   }
 
+  function openModal() {
+    resetForm()
+    setShowModal(true)
+  }
+
+  function closeModal() {
+    setShowModal(false)
+    resetForm()
+  }
+
   const inputClass = "w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-colors"
   const labelClass = "block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5"
 
@@ -117,6 +124,7 @@ export default function ClientsPage() {
         title="Clients"
         subtitle="Manage your client roster and contact information."
         breadcrumb={['Workspace', 'Clients']}
+        action={clients.length > 0 ? { label: 'Add Client', onClick: openModal } : undefined}
       />
 
       <div className="px-8 py-6">
@@ -125,7 +133,7 @@ export default function ClientsPage() {
             Client added successfully.
           </div>
         )}
-        {error && (
+        {error && !showModal && (
           <div className="mb-4 px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
             {error}
           </div>
@@ -148,7 +156,7 @@ export default function ClientsPage() {
               Add your first client to start managing engagements, quotations, and invoices.
             </p>
             <button
-              onClick={() => setShowModal(true)}
+              onClick={openModal}
               className="flex items-center gap-2 px-5 py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors"
             >
               <Plus size={15} />
@@ -157,15 +165,6 @@ export default function ClientsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="flex justify-end mb-2">
-              <button
-                onClick={() => setShowModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                <Plus size={14} />
-                Add Client
-              </button>
-            </div>
             {clients.map((client) => (
               <div
                 key={client.id}
@@ -242,7 +241,7 @@ export default function ClientsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => { setShowModal(false); resetForm() }}
+            onClick={closeModal}
           />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto z-10">
             {/* Modal header */}
@@ -252,7 +251,7 @@ export default function ClientsPage() {
                 <p className="text-xs text-gray-400 mt-0.5">Fill in the client details below</p>
               </div>
               <button
-                onClick={() => { setShowModal(false); resetForm() }}
+                onClick={closeModal}
                 className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X size={18} />
@@ -365,7 +364,7 @@ export default function ClientsPage() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => { setShowModal(false); resetForm() }}
+                  onClick={closeModal}
                   className="flex-1 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Cancel
@@ -382,54 +381,6 @@ export default function ClientsPage() {
           </div>
         </div>
       )}
-
-      <RightPanel title="Quick Add Client" subtitle="Fast client registration.">
-        <form onSubmit={handleCreate} className="space-y-4">
-          {success && (
-            <div className="px-3 py-2 bg-green-50 border border-green-100 rounded-lg text-sm text-green-700">
-              Client added successfully.
-            </div>
-          )}
-          <div>
-            <label className={labelClass}>Company Name *</label>
-            <input
-              type="text"
-              placeholder="e.g. PayFlux Technologies"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Email</label>
-            <input
-              type="email"
-              placeholder="contact@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Phone</label>
-            <input
-              type="text"
-              placeholder="+234..."
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-          >
-            {submitting ? 'Adding...' : 'Add Client'}
-          </button>
-        </form>
-      </RightPanel>
     </div>
   )
 }

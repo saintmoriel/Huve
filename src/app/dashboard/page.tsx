@@ -27,40 +27,13 @@ import {
   FileText,
   CreditCard,
   Receipt,
-  X,
 } from 'lucide-react'
 
-const cashflowData = [
-  { month: 'Jan', invoiced: 850000, paid: 620000 },
-  { month: 'Feb', invoiced: 1200000, paid: 980000 },
-  { month: 'Mar', invoiced: 950000, paid: 750000 },
-  { month: 'Apr', invoiced: 1400000, paid: 1100000 },
-  { month: 'May', invoiced: 1100000, paid: 900000 },
-  { month: 'Jun', invoiced: 1650000, paid: 1250000 },
-]
-
-const revenueData = [
-  { month: 'Jan', revenue: 620000 },
-  { month: 'Feb', revenue: 980000 },
-  { month: 'Mar', revenue: 750000 },
-  { month: 'Apr', revenue: 1100000 },
-  { month: 'May', revenue: 900000 },
-  { month: 'Jun', revenue: 1250000 },
-]
-
-const invoiceStatusData = [
-  { name: 'Paid', value: 68, color: '#16a34a' },
-  { name: 'Unpaid', value: 22, color: '#dc2626' },
-  { name: 'Partial', value: 10, color: '#ea580c' },
-]
-
-const recentActivity = [
-  { action: 'Invoice generated', client: 'PayFlux Technologies', amount: '₦400,000', time: '2 hours ago', type: 'invoice', href: '/invoices' },
-  { action: 'Payment recorded', client: 'Northbridge Microfinance', amount: '₦650,000', time: '5 hours ago', type: 'payment', href: '/payments' },
-  { action: 'Quotation sent', client: 'Lagos State Ministry of Trade', amount: '₦1,200,000', time: 'Yesterday', type: 'quotation', href: '/quotations' },
-  { action: 'New engagement', client: 'Marketplace Naija', amount: '—', time: 'Yesterday', type: 'engagement', href: '/engagements' },
-  { action: 'Payment recorded', client: 'Veritas University SU', amount: '₦150,000', time: '2 days ago', type: 'payment', href: '/payments' },
-]
+const invoiceStatusColors: Record<string, string> = {
+  Paid: '#16a34a',
+  Unpaid: '#dc2626',
+  Partial: '#ea580c',
+}
 
 const activityTypeConfig: Record<string, { color: string; bg: string; letter: string }> = {
   invoice: { color: 'text-blue-600', bg: 'bg-blue-50', letter: 'I' },
@@ -69,45 +42,50 @@ const activityTypeConfig: Record<string, { color: string; bg: string; letter: st
   engagement: { color: 'text-orange-600', bg: 'bg-orange-50', letter: 'E' },
 }
 
-const drilldownData: Record<string, { title: string; items: { label: string; value: string; sub?: string }[] }> = {
-  revenue: {
-    title: 'Revenue Breakdown (YTD)',
-    items: [
-      { label: 'Q1 (Jan–Mar)', value: '₦2,350,000', sub: '+8% vs last year' },
-      { label: 'Q2 (Apr–Jun)', value: '₦4,250,000', sub: '+15% vs Q1' },
-      { label: 'Top client', value: 'PayFlux Technologies', sub: '₦1,800,000 collected' },
-      { label: 'Avg invoice size', value: '₦420,000', sub: 'Across 15 invoices' },
-      { label: 'Collection rate', value: '84%', sub: 'Of all invoiced amount' },
-    ],
-  },
-  invoices: {
-    title: 'Outstanding Invoices',
-    items: [
-      { label: 'Northbridge Microfinance', value: '₦600,000', sub: 'Overdue 12 days' },
-      { label: 'Lagos State Ministry', value: '₦450,000', sub: 'Due in 3 days' },
-      { label: 'Marketplace Naija', value: '₦200,000', sub: 'Partially paid' },
-      { label: 'Total outstanding', value: '₦1,250,000', sub: '3 invoices pending' },
-    ],
-  },
-  clients: {
-    title: 'Active Clients',
-    items: [
-      { label: 'Northbridge Microfinance Bank', value: 'Banking', sub: 'Network security retainer' },
-      { label: 'PayFlux Technologies', value: 'Fintech', sub: 'Penetration testing' },
-      { label: 'Veritas University SU', value: 'Education', sub: 'Web platform build' },
-      { label: 'Lagos State Ministry of Trade', value: 'Government', sub: 'Compliance review' },
-      { label: 'Marketplace Naija', value: 'E-commerce', sub: 'Security maintenance' },
-    ],
-  },
-  engagements: {
-    title: 'Active Engagements',
-    items: [
-      { label: 'Q3 Payment Infrastructure Pentest', value: 'Active', sub: 'PayFlux Technologies' },
-      { label: 'Network Security Audit', value: 'Active', sub: 'Northbridge Microfinance' },
-      { label: 'E-commerce Security Maintenance', value: 'Active', sub: 'Marketplace Naija' },
-      { label: 'On schedule', value: '84%', sub: 'Across all engagements' },
-    ],
-  },
+type ActivityItem = {
+  action: string
+  client: string
+  amount: string
+  time: string
+  type: string
+  href: string
+  ts: number
+}
+
+// Build the last 6 month buckets ending with the current month
+function buildMonthBuckets(): { key: string; month: string; invoiced: number; paid: number }[] {
+  const out = []
+  const now = new Date()
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    out.push({
+      key: `${d.getFullYear()}-${d.getMonth()}`,
+      month: d.toLocaleDateString('en-NG', { month: 'short' }),
+      invoiced: 0,
+      paid: 0,
+    })
+  }
+  return out
+}
+
+function monthKey(dateStr: string): string {
+  const d = new Date(dateStr)
+  return `${d.getFullYear()}-${d.getMonth()}`
+}
+
+// Relative time like "2 hours ago" / "Yesterday" / "3 days ago"
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins} min ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`
+  const days = Math.floor(hours / 24)
+  if (days === 1) return 'Yesterday'
+  if (days < 30) return `${days} days ago`
+  const months = Math.floor(days / 30)
+  return `${months} month${months > 1 ? 's' : ''} ago`
 }
 
 function formatNaira(value: number) {
@@ -136,7 +114,20 @@ export default function DashboardPage() {
   const router = useRouter()
   const [businessName, setBusinessName] = useState('Your Business')
   const [loading, setLoading] = useState(true)
-  const [activeDrilldown, setActiveDrilldown] = useState<string | null>(null)
+
+  // Real stats
+  const [stats, setStats] = useState({
+    revenue: 0,
+    outstanding: 0,
+    overdueCount: 0,
+    clients: 0,
+    engagements: 0,
+  })
+  const [pieData, setPieData] = useState<{ name: string; value: number; color: string }[]>([])
+  const [invoiceTotal, setInvoiceTotal] = useState(0)
+  const [cashflowData, setCashflowData] = useState<{ month: string; invoiced: number; paid: number }[]>([])
+  const [revenueData, setRevenueData] = useState<{ month: string; revenue: number }[]>([])
+  const [activity, setActivity] = useState<ActivityItem[]>([])
 
   useEffect(() => {
     async function load() {
@@ -157,6 +148,95 @@ export default function DashboardPage() {
           .single()
         if (business) setBusinessName(business.name)
       }
+
+      // --- Real data queries (RLS scopes everything to this business) ---
+      const [clientsRes, engagementsRes, invoicesRes, paymentsRes, recentInvoices, recentPayments, recentQuotes, recentEngagements] = await Promise.all([
+        supabase.from('clients').select('id', { count: 'exact', head: true }),
+        supabase.from('engagements').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('invoices').select('id, total, status, due_date, created_at'),
+        supabase.from('payments').select('amount, paid_at'),
+        supabase.from('invoices').select('total, created_at, clients(name)').order('created_at', { ascending: false }).limit(5),
+        supabase.from('payments').select('amount, paid_at, invoices(clients(name))').order('paid_at', { ascending: false }).limit(5),
+        supabase.from('quotations').select('total, created_at, clients(name)').order('created_at', { ascending: false }).limit(5),
+        supabase.from('engagements').select('title, created_at, clients(name)').order('created_at', { ascending: false }).limit(5),
+      ])
+
+      const invoices = invoicesRes.data ?? []
+      const payments = paymentsRes.data ?? []
+
+      const totalInvoiced = invoices.reduce((s: number, i: { total: number }) => s + Number(i.total), 0)
+      const totalCollected = payments.reduce((s: number, p: { amount: number }) => s + Number(p.amount), 0)
+      const outstanding = Math.max(0, totalInvoiced - totalCollected)
+
+      const today = new Date()
+      const overdueCount = invoices.filter((i: { status: string; due_date: string | null }) =>
+        i.status !== 'paid' && i.due_date && new Date(i.due_date) < today
+      ).length
+
+      // Pie: count invoices by collection status
+      const paidCount = invoices.filter((i: { status: string }) => i.status === 'paid').length
+      const partialCount = invoices.filter((i: { status: string }) => i.status === 'partially_paid').length
+      const unpaidCount = invoices.filter((i: { status: string }) =>
+        i.status === 'unpaid' || i.status === 'overdue'
+      ).length
+
+      const pie = [
+        { name: 'Paid', value: paidCount, color: invoiceStatusColors.Paid },
+        { name: 'Unpaid', value: unpaidCount, color: invoiceStatusColors.Unpaid },
+        { name: 'Partial', value: partialCount, color: invoiceStatusColors.Partial },
+      ].filter((s) => s.value > 0)
+
+      // --- Charts: bucket invoices (by created_at) and payments (by paid_at) into last 6 months ---
+      const buckets = buildMonthBuckets()
+      const bucketMap = new Map(buckets.map((b) => [b.key, b]))
+      invoices.forEach((i: { total: number; created_at: string }) => {
+        const b = bucketMap.get(monthKey(i.created_at))
+        if (b) b.invoiced += Number(i.total)
+      })
+      payments.forEach((p: { amount: number; paid_at: string }) => {
+        const b = bucketMap.get(monthKey(p.paid_at))
+        if (b) b.paid += Number(p.amount)
+      })
+      setCashflowData(buckets.map((b) => ({ month: b.month, invoiced: b.invoiced, paid: b.paid })))
+      setRevenueData(buckets.map((b) => ({ month: b.month, revenue: b.paid })))
+
+      // --- Recent activity: merge latest records across types, sort by time ---
+      const acts: ActivityItem[] = []
+      const clientName = (rel: any): string =>
+        rel?.name ?? rel?.clients?.name ?? 'A client'
+
+      ;(recentInvoices.data ?? []).forEach((r: any) => acts.push({
+        action: 'Invoice generated', client: clientName(r.clients),
+        amount: `₦${Number(r.total).toLocaleString()}`, type: 'invoice', href: '/invoices',
+        ts: new Date(r.created_at).getTime(), time: relativeTime(new Date(r.created_at).getTime()),
+      }))
+      ;(recentPayments.data ?? []).forEach((r: any) => acts.push({
+        action: 'Payment recorded', client: clientName(r.invoices?.clients),
+        amount: `₦${Number(r.amount).toLocaleString()}`, type: 'payment', href: '/payments',
+        ts: new Date(r.paid_at).getTime(), time: relativeTime(new Date(r.paid_at).getTime()),
+      }))
+      ;(recentQuotes.data ?? []).forEach((r: any) => acts.push({
+        action: 'Quotation sent', client: clientName(r.clients),
+        amount: `₦${Number(r.total).toLocaleString()}`, type: 'quotation', href: '/quotations',
+        ts: new Date(r.created_at).getTime(), time: relativeTime(new Date(r.created_at).getTime()),
+      }))
+      ;(recentEngagements.data ?? []).forEach((r: any) => acts.push({
+        action: 'New engagement', client: clientName(r.clients),
+        amount: '—', type: 'engagement', href: '/engagements',
+        ts: new Date(r.created_at).getTime(), time: relativeTime(new Date(r.created_at).getTime()),
+      }))
+      acts.sort((a, b) => b.ts - a.ts)
+      setActivity(acts.slice(0, 5))
+
+      setStats({
+        revenue: totalCollected,
+        outstanding,
+        overdueCount,
+        clients: clientsRes.count ?? 0,
+        engagements: engagementsRes.count ?? 0,
+      })
+      setPieData(pie)
+      setInvoiceTotal(invoices.length)
 
       setLoading(false)
     }
@@ -187,42 +267,46 @@ export default function DashboardPage() {
   const statCards = [
     {
       key: 'revenue',
+      href: '/payments',
       icon: CreditCard,
       iconBg: 'bg-green-50',
       iconColor: 'text-green-600',
-      trend: '+12%',
+      trend: 'Collected',
       trendUp: true,
-      value: '₦6.6M',
-      label: 'Total Revenue (YTD)',
+      value: formatNaira(stats.revenue),
+      label: 'Total Revenue Collected',
     },
     {
       key: 'invoices',
+      href: '/invoices',
       icon: FileText,
       iconBg: 'bg-red-50',
       iconColor: 'text-red-500',
-      trend: '3 overdue',
-      trendUp: false,
-      value: '₦1.25M',
+      trend: stats.overdueCount > 0 ? `${stats.overdueCount} overdue` : 'On track',
+      trendUp: stats.overdueCount === 0,
+      value: formatNaira(stats.outstanding),
       label: 'Outstanding Invoices',
     },
     {
       key: 'clients',
+      href: '/clients',
       icon: Users,
       iconBg: 'bg-blue-50',
       iconColor: 'text-blue-600',
-      trend: '+2 this month',
+      trend: `${stats.clients} total`,
       trendUp: true,
-      value: '5',
+      value: String(stats.clients),
       label: 'Active Clients',
     },
     {
       key: 'engagements',
+      href: '/engagements',
       icon: Briefcase,
       iconBg: 'bg-purple-50',
       iconColor: 'text-purple-600',
-      trend: '84% on track',
+      trend: 'Active',
       trendUp: true,
-      value: '3',
+      value: String(stats.engagements),
       label: 'Active Engagements',
     },
   ]
@@ -231,7 +315,7 @@ export default function DashboardPage() {
     <div>
       <TopBar
         title={businessName}
-        subtitle="Operations overview — June 2025"
+        subtitle="Operations overview"
         breadcrumb={['Workspace', 'Dashboard']}
       />
 
@@ -240,14 +324,10 @@ export default function DashboardPage() {
         {/* Stat cards */}
         <div className="grid grid-cols-4 gap-4">
           {statCards.map((card) => (
-            <button
+            <Link
               key={card.key}
-              onClick={() => setActiveDrilldown(activeDrilldown === card.key ? null : card.key)}
-              className={`bg-white rounded-xl border shadow-sm p-5 text-left transition-all hover:shadow-md ${
-                activeDrilldown === card.key
-                  ? 'border-green-300 ring-2 ring-green-100'
-                  : 'border-gray-100 hover:border-green-200'
-              }`}
+              href={card.href}
+              className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 text-left transition-all hover:shadow-md hover:border-green-200"
             >
               <div className="flex items-center justify-between mb-3">
                 <div className={`w-9 h-9 ${card.iconBg} rounded-lg flex items-center justify-center`}>
@@ -262,52 +342,10 @@ export default function DashboardPage() {
               </div>
               <p className="text-2xl font-bold text-gray-900">{card.value}</p>
               <p className="text-xs text-gray-500 mt-1">{card.label}</p>
-              <p className="text-[10px] text-green-600 mt-1.5 font-medium">
-                {activeDrilldown === card.key ? 'Click to close ↑' : 'Click for details →'}
-              </p>
-            </button>
+              <p className="text-[10px] text-green-600 mt-1.5 font-medium">View all →</p>
+            </Link>
           ))}
         </div>
-
-        {/* Drilldown panel */}
-        {activeDrilldown && drilldownData[activeDrilldown] && (
-          <div className="bg-white rounded-xl border border-green-200 shadow-sm p-5 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-800">
-                {drilldownData[activeDrilldown].title}
-              </h3>
-              <button
-                onClick={() => setActiveDrilldown(null)}
-                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X size={15} />
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {drilldownData[activeDrilldown].items.map((item, i) => (
-                <div key={i} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">{item.label}</p>
-                    {item.sub && <p className="text-xs text-gray-400 mt-0.5">{item.sub}</p>}
-                  </div>
-                  <span className="text-sm font-semibold text-gray-900 ml-3 shrink-0">{item.value}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <Link
-                href={
-                  activeDrilldown === 'revenue' ? '/payments' :
-                  activeDrilldown === 'invoices' ? '/invoices' :
-                  activeDrilldown === 'clients' ? '/clients' : '/engagements'
-                }
-                className="text-xs text-green-600 hover:underline font-medium"
-              >
-                View all →
-              </Link>
-            </div>
-          </div>
-        )}
 
         {/* Charts row */}
         <div className="grid grid-cols-3 gap-4">
@@ -328,49 +366,67 @@ export default function DashboardPage() {
                 </span>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={cashflowData} barGap={4}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={formatNaira} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="invoiced" name="Invoiced" fill="#0a1510" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="paid" name="Collected" fill="#16a34a" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {cashflowData.every((d) => d.invoiced === 0 && d.paid === 0) ? (
+              <div className="flex flex-col items-center justify-center" style={{ height: 200 }}>
+                <p className="text-sm text-gray-400">No cashflow data yet</p>
+                <p className="text-xs text-gray-300 mt-1">Charts populate as you invoice and collect payments.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={cashflowData} barGap={4}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={formatNaira} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="invoiced" name="Invoiced" fill="#0a1510" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="paid" name="Collected" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-gray-800 mb-1">Invoice Status</h2>
             <p className="text-xs text-gray-400 mb-4">Breakdown by collection status</p>
-            <div className="flex justify-center mb-4">
-              <PieChart width={140} height={140}>
-                <Pie
-                  data={invoiceStatusData}
-                  cx={65}
-                  cy={65}
-                  innerRadius={45}
-                  outerRadius={65}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {invoiceStatusData.map((entry, index) => (
-                    <Cell key={index} fill={entry.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </div>
-            <div className="space-y-2">
-              {invoiceStatusData.map((item) => (
-                <div key={item.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                    <span className="text-xs text-gray-600">{item.name}</span>
-                  </div>
-                  <span className="text-xs font-semibold text-gray-800">{item.value}%</span>
+            {pieData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <p className="text-sm text-gray-400">No invoices yet</p>
+                <p className="text-xs text-gray-300 mt-1">Status breakdown appears once you issue invoices.</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-center mb-4">
+                  <PieChart width={140} height={140}>
+                    <Pie
+                      data={pieData}
+                      cx={65}
+                      cy={65}
+                      innerRadius={45}
+                      outerRadius={65}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={index} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
                 </div>
-              ))}
-            </div>
+                <div className="space-y-2">
+                  {pieData.map((item) => (
+                    <div key={item.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                        <span className="text-xs text-gray-600">{item.name}</span>
+                      </div>
+                      <span className="text-xs font-semibold text-gray-800">
+                        {item.value} ({invoiceTotal > 0 ? Math.round((item.value / invoiceTotal) * 100) : 0}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
             <Link href="/invoices" className="block mt-4 text-xs text-green-600 hover:underline font-medium">
               View all invoices →
             </Link>
@@ -385,68 +441,79 @@ export default function DashboardPage() {
                 <h2 className="text-sm font-semibold text-gray-800">Revenue Trend</h2>
                 <p className="text-xs text-gray-400 mt-0.5">Monthly collected revenue</p>
               </div>
-              <span className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
-                <TrendingUp size={11} /> +38% vs last period
-              </span>
             </div>
-            <ResponsiveContainer width="100%" height={160}>
-              <AreaChart data={revenueData}>
-                <defs>
-                  <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#16a34a" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={formatNaira} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  name="Revenue"
-                  stroke="#16a34a"
-                  strokeWidth={2}
-                  fill="url(#revenueGrad)"
-                  dot={{ fill: '#16a34a', r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            {revenueData.every((d) => d.revenue === 0) ? (
+              <div className="flex flex-col items-center justify-center" style={{ height: 160 }}>
+                <p className="text-sm text-gray-400">No revenue recorded yet</p>
+                <p className="text-xs text-gray-300 mt-1">This chart fills in as payments are recorded.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={160}>
+                <AreaChart data={revenueData}>
+                  <defs>
+                    <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#16a34a" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={formatNaira} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    name="Revenue"
+                    stroke="#16a34a"
+                    strokeWidth={2}
+                    fill="url(#revenueGrad)"
+                    dot={{ fill: '#16a34a', r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <h2 className="text-sm font-semibold text-gray-800 mb-4">Recent Activity</h2>
-            <div className="space-y-3">
-              {recentActivity.map((item, i) => {
-                const config = activityTypeConfig[item.type]
-                return (
-                  <Link
-                    key={i}
-                    href={item.href}
-                    className="flex items-start gap-3 hover:bg-gray-50 rounded-lg p-1.5 -mx-1.5 transition-colors group"
-                  >
-                    <div className={`w-7 h-7 rounded-lg ${config.bg} flex items-center justify-center shrink-0 mt-0.5`}>
-                      <span className={`text-[10px] font-bold ${config.color}`}>
-                        {config.letter}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-800 truncate group-hover:text-green-700 transition-colors">
-                        {item.action}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate">{item.client}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      {item.amount !== '—' && (
-                        <p className="text-xs font-semibold text-gray-700">{item.amount}</p>
-                      )}
-                      <p className="text-[10px] text-gray-400">{item.time}</p>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
+            {activity.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <p className="text-sm text-gray-400">No activity yet</p>
+                <p className="text-xs text-gray-300 mt-1">Actions appear here as you use the workspace.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activity.map((item, i) => {
+                  const config = activityTypeConfig[item.type]
+                  return (
+                    <Link
+                      key={i}
+                      href={item.href}
+                      className="flex items-start gap-3 hover:bg-gray-50 rounded-lg p-1.5 -mx-1.5 transition-colors group"
+                    >
+                      <div className={`w-7 h-7 rounded-lg ${config.bg} flex items-center justify-center shrink-0 mt-0.5`}>
+                        <span className={`text-[10px] font-bold ${config.color}`}>
+                          {config.letter}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-800 truncate group-hover:text-green-700 transition-colors">
+                          {item.action}
+                        </p>
+                        <p className="text-xs text-gray-400 truncate">{item.client}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        {item.amount !== '—' && (
+                          <p className="text-xs font-semibold text-gray-700">{item.amount}</p>
+                        )}
+                        <p className="text-[10px] text-gray-400">{item.time}</p>
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
             <Link href="/payments" className="block mt-4 pt-3 border-t border-gray-100 text-xs text-green-600 hover:underline font-medium">
               View all activity →
             </Link>

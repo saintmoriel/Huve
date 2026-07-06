@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import HuveLogo from '@/components/HuveLogo'
 import { useEffect, useState, useRef } from 'react'
 import {
   LayoutDashboard,
@@ -112,9 +113,7 @@ export default function Navigation() {
     <nav className="fixed top-0 left-0 right-0 h-16 bg-[#0a1510] z-50 flex items-center px-6 border-b border-[#1a3a24]">
       {/* Logo */}
       <Link href="/dashboard" className="flex items-center gap-2.5 shrink-0 mr-4">
-        <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-          <span className="text-white font-black text-sm">H</span>
-        </div>
+        <HuveLogo size={32} />
         <span className="text-white text-base font-bold tracking-tight">Huve</span>
       </Link>
 
@@ -264,9 +263,17 @@ export default function Navigation() {
           )}
         </div>
 
-        <button className="p-2 rounded-lg hover:bg-[#1a3a24] text-gray-400 hover:text-white transition-colors">
+        <Link
+          href="/settings"
+          className={`p-2 rounded-lg transition-colors ${
+            pathname.startsWith('/settings')
+              ? 'bg-[#1a3a24] text-white'
+              : 'hover:bg-[#1a3a24] text-gray-400 hover:text-white'
+          }`}
+          title="Workspace settings"
+        >
           <Settings size={18} />
-        </button>
+        </Link>
 
         <div className="w-px h-6 bg-[#1a3a24]" />
 
@@ -299,6 +306,23 @@ export default function Navigation() {
                   <p className="text-xs text-gray-400 mt-0.5">{userInfo?.businessName}</p>
                 </div>
                 <div className="p-1">
+                  <Link
+                    href="/settings"
+                    onClick={() => setProfileOpen(false)}
+                    className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    <Settings size={15} />
+                    Workspace profile
+                  </Link>
+                  <Link
+                    href="/settings/team"
+                    onClick={() => setProfileOpen(false)}
+                    className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    <Users size={15} />
+                    Team operators
+                  </Link>
+                  <div className="my-1 border-t border-gray-100" />
                   <button
                     onClick={handleLogout}
                     className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors"
