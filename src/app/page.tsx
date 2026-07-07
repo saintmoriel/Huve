@@ -1,25 +1,35 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSessionUser } from '@/lib/getSessionUser'
+import HuveLogo from '@/components/HuveLogo'
 
-// Root route: send logged-in users to the dashboard, everyone else to login.
-// Mirrors the auth check used across the rest of the app.
 export default function Home() {
   const router = useRouter()
+  const [message, setMessage] = useState('Loading Huve...')
 
   useEffect(() => {
+    let cancelled = false
     async function route() {
-      const { data: { user } } = await supabase.auth.getUser()
-      router.replace(user ? '/dashboard' : '/login')
+      try {
+        const user = await getSessionUser()
+        if (cancelled) return
+        router.replace(user ? '/dashboard' : '/login')
+      } catch {
+        if (cancelled) return
+        setMessage('Almost there...')
+        router.replace('/login')
+      }
     }
     route()
+    return () => { cancelled = true }
   }, [router])
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#f8faf8]">
-      <p className="text-sm text-gray-400">Loading Huve...</p>
+    <main className="min-h-screen bg-[#f8faf8] flex flex-col items-center justify-center gap-4">
+      <HuveLogo size={48} />
+      <p className="text-sm text-gray-400 animate-pulse">{message}</p>
     </main>
   )
 }
