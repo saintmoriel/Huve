@@ -28,6 +28,7 @@ import {
   CreditCard,
   Receipt,
 } from 'lucide-react'
+import { getSessionUser } from '@/lib/getSessionUser'
 
 const invoiceStatusColors: Record<string, string> = {
   Paid: '#16a34a',
@@ -131,7 +132,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await getSessionUser()
       if (!user) { router.push('/login'); return }
 
       const { data: profile } = await supabase

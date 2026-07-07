@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Users, UserPlus, Shield, Check, Copy, X } from 'lucide-react'
+import { getSessionUser } from '@/lib/getSessionUser'
 
 type Member = {
   id: string
@@ -42,7 +43,7 @@ export default function TeamSettingsPage() {
 
   async function loadData() {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await getSessionUser()
       if (!user) { setLoading(false); return }
 
       const { data: me } = await supabase

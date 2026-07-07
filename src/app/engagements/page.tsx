@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import TopBar from '@/components/TopBar'
 import RightPanel from '@/components/RightPanel'
 import { Briefcase, Shield, ClipboardCheck, RotateCcw, Globe, MoreHorizontal, Plus } from 'lucide-react'
+import { getSessionUser } from '@/lib/getSessionUser'
 
 type Client = { id: string; name: string }
 type Engagement = {
@@ -50,7 +51,7 @@ export default function EngagementsPage() {
   const [success, setSuccess] = useState(false)
 
   async function loadData() {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getSessionUser()
     if (!user) { router.push('/login'); return }
 
     const { data: clientsData } = await supabase.from('clients').select('id, name').order('name')

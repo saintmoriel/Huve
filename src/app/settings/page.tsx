@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState, useRef } from 'react'
+import { getSessionUser } from '@/lib/getSessionUser'
 import { supabase } from '@/lib/supabase'
 import {
   Building2, Save, Upload, Globe, Mail, Phone, MapPin,
@@ -45,7 +46,7 @@ export default function ProfileSettingsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        const user = await getSessionUser()
         if (!user) { setLoading(false); return }
 
         const { data: profile } = await supabase

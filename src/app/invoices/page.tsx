@@ -8,6 +8,7 @@ import TopBar from '@/components/TopBar'
 import RightPanel from '@/components/RightPanel'
 import { generateInvoicePdf } from '@/lib/invoicePdf'
 import { Receipt, Plus, X, Zap } from 'lucide-react'
+import { getSessionUser } from '@/lib/getSessionUser'
 
 type Client = { id: string; name: string }
 type Quotation = {
@@ -56,7 +57,7 @@ export default function InvoicesPage() {
   }
 
   async function loadData() {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getSessionUser()
     if (!user) { router.push('/login'); return }
 
     const { data: clientsData } = await supabase.from('clients').select('id, name').order('name')

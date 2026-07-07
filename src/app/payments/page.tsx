@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { logAction } from '@/lib/audit'
 import TopBar from '@/components/TopBar'
 import { CreditCard, CheckCircle, Plus } from 'lucide-react'
+import { getSessionUser } from '@/lib/getSessionUser'
 
 type Invoice = {
   id: string
@@ -34,7 +35,7 @@ export default function PaymentsPage() {
   const [submitting, setSubmitting] = useState(false)
 
   async function loadData() {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getSessionUser()
     if (!user) { router.push('/login'); return }
 
     const { data: invoicesData, error: invError } = await supabase

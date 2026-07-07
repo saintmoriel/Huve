@@ -15,6 +15,7 @@ import {
   X,
   Plus,
 } from 'lucide-react'
+import { getSessionUser } from '@/lib/getSessionUser'
 
 type Client = {
   id: string
@@ -48,7 +49,7 @@ export default function ClientsPage() {
   const [success, setSuccess] = useState(false)
 
   async function loadClients() {
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getSessionUser()
     if (!user) { router.push('/login'); return }
 
     const { data, error: clientsError } = await supabase
