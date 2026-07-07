@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { ShieldCheck } from 'lucide-react'
+import HuveLogo from '@/components/HuveLogo'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -119,9 +120,7 @@ export default function SignupPage() {
     <main className="min-h-screen bg-[#f8faf8] flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 bg-[#0a1510] rounded-xl flex items-center justify-center">
-            <ShieldCheck size={20} className="text-green-400" />
-          </div>
+          <HuveLogo size={40} />
           <div>
             <p className="text-lg font-bold text-gray-900 leading-none">Huve</p>
             <p className="text-xs text-gray-400 mt-0.5">Secure Operations Platform</p>
