@@ -17,6 +17,8 @@ import {
   ChevronDown,
   LogOut,
   Search,
+  Menu,
+  X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getSessionUser } from '@/lib/getSessionUser'
@@ -52,6 +54,7 @@ export default function Navigation() {
   const [securityOpen, setSecurityOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const financeRef = useRef<HTMLDivElement>(null)
   const securityRef = useRef<HTMLDivElement>(null)
   const profileRef = useRef<HTMLDivElement>(null)
@@ -105,6 +108,11 @@ export default function Navigation() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  // Close the mobile menu whenever the route changes
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/login')
@@ -118,15 +126,15 @@ export default function Navigation() {
   if (authPages.includes(pathname)) return null
 
   return (
-    <nav className="fixed top-0 left-0 right-0 h-16 bg-[#0a1510] z-50 flex items-center px-6 border-b border-[#1a3a24]">
+    <nav className="fixed top-0 left-0 right-0 h-16 bg-[#0a1510] z-50 flex items-center px-4 sm:px-6 border-b border-[#1a3a24]">
       {/* Logo */}
       <Link href="/dashboard" className="flex items-center gap-2.5 shrink-0 mr-4">
         <HuveLogo size={32} />
         <span className="text-white text-base font-bold tracking-tight">Huve</span>
       </Link>
 
-      {/* Primary nav */}
-      <div className="flex-1 flex items-center justify-center gap-1">
+      {/* Primary nav — desktop only */}
+      <div className="hidden md:flex flex-1 items-center justify-center gap-1">
         {primaryNav.map((item) => {
           const isActive = pathname === item.href
           return (
@@ -226,10 +234,13 @@ export default function Navigation() {
         )}
       </div>
 
+      {/* Spacer on mobile to push right-side content over */}
+      <div className="flex-1 md:hidden" />
+
       {/* Right side */}
       <div className="flex items-center gap-2 shrink-0">
-        {/* Search */}
-        <div className="flex items-center gap-2 bg-[#1a3a24]/50 border border-[#1a3a24] rounded-lg px-3 py-2 w-56">
+        {/* Search — desktop only */}
+        <div className="hidden lg:flex items-center gap-2 bg-[#1a3a24]/50 border border-[#1a3a24] rounded-lg px-3 py-2 w-56">
           <Search size={14} className="text-gray-500" />
           <input
             type="text"
@@ -273,11 +284,11 @@ export default function Navigation() {
           )}
         </div>
 
-        {/* Settings gear — owner/admin only */}
+        {/* Settings gear — owner/admin only, desktop */}
         {canManage && (
           <Link
             href="/settings"
-            className={`p-2 rounded-lg transition-colors ${
+            className={`hidden md:block p-2 rounded-lg transition-colors ${
               pathname.startsWith('/settings')
                 ? 'bg-[#1a3a24] text-white'
                 : 'hover:bg-[#1a3a24] text-gray-400 hover:text-white'
@@ -288,10 +299,10 @@ export default function Navigation() {
           </Link>
         )}
 
-        <div className="w-px h-6 bg-[#1a3a24]" />
+        <div className="hidden md:block w-px h-6 bg-[#1a3a24]" />
 
-        {/* Profile dropdown */}
-        <div ref={profileRef} className="relative">
+        {/* Profile dropdown — desktop */}
+        <div ref={profileRef} className="relative hidden md:block">
           <button
             onClick={() => { setProfileOpen(!profileOpen); setNotificationsOpen(false) }}
             className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-[#1a3a24] transition-colors"
@@ -352,7 +363,105 @@ export default function Navigation() {
             </>
           )}
         </div>
+
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={() => setMobileOpen(!mobileOpen)}
+          className="md:hidden p-2 rounded-lg hover:bg-[#1a3a24] text-gray-300 hover:text-white transition-colors"
+        >
+          {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
       </div>
+
+      {/* Mobile slide-down menu */}
+      {mobileOpen && (
+        <div className="md:hidden fixed top-16 left-0 right-0 bg-[#0a1510] border-b border-[#1a3a24] shadow-lg z-40 max-h-[calc(100vh-4rem)] overflow-y-auto">
+          <div className="px-4 py-3 space-y-1">
+            {/* Profile header */}
+            <div className="flex items-center gap-3 px-2 py-3 mb-1 border-b border-[#1a3a24]">
+              <div className="w-9 h-9 rounded-full bg-green-600 flex items-center justify-center text-white text-sm font-bold">
+                {userInfo?.initials ?? '??'}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-white leading-none">{userInfo?.fullName ?? 'Loading...'}</p>
+                <p className="text-[11px] text-gray-400 mt-1">{userInfo?.businessName ?? ''}</p>
+              </div>
+            </div>
+
+            {primaryNav.map((item) => {
+              const isActive = pathname === item.href
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive ? 'bg-[#1a3a24] text-white' : 'text-gray-300 hover:bg-[#1a3a24]/60'
+                  }`}
+                >
+                  <item.icon size={16} className={isActive ? 'text-green-400' : 'text-gray-500'} />
+                  {item.label}
+                </Link>
+              )
+            })}
+
+            <p className="px-3 pt-3 pb-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Finance</p>
+            {financeNav.map((item) => {
+              const isActive = pathname === item.href
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive ? 'bg-[#1a3a24] text-white' : 'text-gray-300 hover:bg-[#1a3a24]/60'
+                  }`}
+                >
+                  <item.icon size={16} className={isActive ? 'text-green-400' : 'text-gray-500'} />
+                  {item.label}
+                </Link>
+              )
+            })}
+
+            {canManage && (
+              <>
+                <p className="px-3 pt-3 pb-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Admin</p>
+                {securityNav.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        isActive ? 'bg-[#1a3a24] text-white' : 'text-gray-300 hover:bg-[#1a3a24]/60'
+                      }`}
+                    >
+                      <item.icon size={16} className={isActive ? 'text-green-400' : 'text-gray-500'} />
+                      {item.label}
+                    </Link>
+                  )
+                })}
+                <Link href="/settings" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:bg-[#1a3a24]/60 transition-colors">
+                  <Settings size={16} className="text-gray-500" />
+                  Workspace settings
+                </Link>
+                <Link href="/settings/team" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:bg-[#1a3a24]/60 transition-colors">
+                  <Users size={16} className="text-gray-500" />
+                  Team operators
+                </Link>
+              </>
+            )}
+
+            <div className="pt-2 mt-2 border-t border-[#1a3a24]">
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+              >
+                <LogOut size={16} />
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   )
 }

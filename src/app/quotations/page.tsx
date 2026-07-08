@@ -10,7 +10,7 @@ import { getSessionUser } from '@/lib/getSessionUser'
 
 type Client = { id: string; name: string }
 type Engagement = { id: string; title: string; client_id: string }
-type LineItem = { description: string; quantity: number; unit_price: number }
+type LineItem = { description: string; quantity: number | string; unit_price: number | string }
 type Quotation = {
   id: string
   status: string
@@ -38,7 +38,7 @@ export default function QuotationsPage() {
   const [success, setSuccess] = useState(false)
   const [clientId, setClientId] = useState('')
   const [engagementId, setEngagementId] = useState('')
-  const [lineItems, setLineItems] = useState<LineItem[]>([{ description: '', quantity: 1, unit_price: 0 }])
+  const [lineItems, setLineItems] = useState<LineItem[]>([{ description: '', quantity: 1, unit_price: '' }])
 
   async function loadData() {
     const user = await getSessionUser()
@@ -65,17 +65,23 @@ export default function QuotationsPage() {
   function updateLineItem(index: number, field: keyof LineItem, value: string) {
     setLineItems((prev) => {
       const next = [...prev]
-      if (field === 'description') next[index] = { ...next[index], description: value }
-      else next[index] = { ...next[index], [field]: parseFloat(value) || 0 }
+      if (field === 'description') {
+        next[index] = { ...next[index], description: value }
+      } else {
+        next[index] = { ...next[index], [field]: value === '' ? '' : (parseFloat(value) || 0) }
+      }
       return next
     })
   }
 
-  const computedTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+  const computedTotal = lineItems.reduce(
+    (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unit_price) || 0),
+    0
+  )
 
   function resetForm() {
     setClientId(''); setEngagementId('')
-    setLineItems([{ description: '', quantity: 1, unit_price: 0 }])
+    setLineItems([{ description: '', quantity: 1, unit_price: '' }])
   }
 
   function openPanel() {
@@ -105,8 +111,8 @@ export default function QuotationsPage() {
     if (qError || !quotation) { setError(qError?.message ?? 'Failed'); setSubmitting(false); return }
 
     const itemsToInsert = lineItems
-      .filter((i) => i.description.trim())
-      .map((i) => ({ quotation_id: quotation.id, description: i.description, quantity: i.quantity, unit_price: i.unit_price }))
+      .filter((i) => String(i.description).trim())
+      .map((i) => ({ quotation_id: quotation.id, description: i.description, quantity: Number(i.quantity) || 0, unit_price: Number(i.unit_price) || 0 }))
 
     if (itemsToInsert.length > 0) {
       const { error: iError } = await supabase.from('quotation_line_items').insert(itemsToInsert)
@@ -303,7 +309,7 @@ export default function QuotationsPage() {
                   </div>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[11px] text-gray-400">
-                      Line total: <span className="font-semibold text-gray-600">₦{(item.quantity * item.unit_price).toLocaleString()}</span>
+                      Line total: <span className="font-semibold text-gray-600">₦{((Number(item.quantity) || 0) * (Number(item.unit_price) || 0)).toLocaleString()}</span>
                     </span>
                     {lineItems.length > 1 && (
                       <button
@@ -319,7 +325,7 @@ export default function QuotationsPage() {
               ))}
               <button
                 type="button"
-                onClick={() => setLineItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0 }])}
+                onClick={() => setLineItems((prev) => [...prev, { description: '', quantity: 1, unit_price: '' }])}
                 className="flex items-center gap-1.5 text-xs text-green-600 hover:text-green-700 font-medium"
               >
                 <Plus size={13} /> Add line item

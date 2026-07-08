@@ -250,12 +250,12 @@ export default function DashboardPage() {
         <TopBar title="Dashboard" breadcrumb={['Workspace', 'Dashboard']} />
         <div className="px-8 py-6">
           <div className="animate-pulse space-y-4">
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="h-28 bg-gray-100 rounded-xl" />
               ))}
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="col-span-2 h-64 bg-gray-100 rounded-xl" />
               <div className="h-64 bg-gray-100 rounded-xl" />
             </div>
@@ -323,7 +323,7 @@ export default function DashboardPage() {
       <div className="px-8 py-6 space-y-6">
 
         {/* Stat cards */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {statCards.map((card) => (
             <Link
               key={card.key}
@@ -349,7 +349,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Charts row */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -435,7 +435,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Revenue trend + Recent activity */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -524,7 +524,7 @@ export default function DashboardPage() {
         {/* Quick actions */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               { label: 'Add a client', href: '/clients', icon: Users, color: 'bg-blue-50 text-blue-600' },
               { label: 'New engagement', href: '/engagements', icon: Briefcase, color: 'bg-purple-50 text-purple-600' },

@@ -18,7 +18,7 @@ type Quotation = {
   client_id: string
   clients: { name: string } | null
 }
-type LineItem = { description: string; quantity: number; unit_price: number }
+type LineItem = { description: string; quantity: number | string; unit_price: number | string }
 type Invoice = {
   id: string
   status: string
@@ -48,7 +48,7 @@ export default function InvoicesPage() {
   const [submitting, setSubmitting] = useState(false)
   const [clientId, setClientId] = useState('')
   const [dueDate, setDueDate] = useState('')
-  const [lineItems, setLineItems] = useState<LineItem[]>([{ description: '', quantity: 1, unit_price: 0 }])
+  const [lineItems, setLineItems] = useState<LineItem[]>([{ description: '', quantity: 1, unit_price: '' }])
 
   async function getBusinessId() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -100,10 +100,10 @@ export default function InvoicesPage() {
     if (invError || !invoice) { setError(invError?.message ?? 'Failed'); setGenerating(null); return }
 
     // 3. Copy line items onto the invoice
-    const items = (qLineItems ?? []) as LineItem[]
+    const items = (qLineItems ?? []) as { description: string; quantity: number; unit_price: number }[]
     if (items.length > 0) {
       const { error: iliError } = await supabase.from('invoice_line_items').insert(
-        items.map((item: LineItem) => ({ invoice_id: invoice.id, description: item.description, quantity: item.quantity, unit_price: item.unit_price }))
+        items.map((item) => ({ invoice_id: invoice.id, description: item.description, quantity: item.quantity, unit_price: item.unit_price }))
       )
       if (iliError) { setError(iliError.message); setGenerating(null); return }
     }
@@ -135,11 +135,6 @@ export default function InvoicesPage() {
         clientName: clientRecord?.name ?? 'Client',
         lineItems: items,
       })
-
-      // --- DIAGNOSTIC: who does the upload think we are? ---
-      const { data: authCheck } = await supabase.auth.getUser()
-      console.log('Upload will run as user:', authCheck.user?.id ?? 'NOT AUTHENTICATED')
-      // ----------------------------------------------------
 
       const path = `${businessId}/${invoice.id}.pdf`
       const { error: uploadError } = await supabase.storage
@@ -177,20 +172,27 @@ export default function InvoicesPage() {
   function updateLineItem(index: number, field: keyof LineItem, value: string) {
     setLineItems((prev) => {
       const next = [...prev]
-      if (field === 'description') next[index] = { ...next[index], description: value }
-      else next[index] = { ...next[index], [field]: parseFloat(value) || 0 }
+      if (field === 'description') {
+        next[index] = { ...next[index], description: value }
+      } else {
+        // Keep the raw string so the box can be empty; convert to number only when computing/saving
+        next[index] = { ...next[index], [field]: value === '' ? '' : (parseFloat(value) || 0) }
+      }
       return next
     })
   }
 
-  const computedTotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
+  const computedTotal = lineItems.reduce(
+    (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unit_price) || 0),
+    0
+  )
   const invoicedQuotationIds = new Set(invoices.map((inv) => inv.quotation_id).filter(Boolean))
   const availableQuotations = quotations.filter((q) => !invoicedQuotationIds.has(q.id))
   const hasClients = clients.length > 0
 
   function resetForm() {
     setClientId(''); setDueDate('')
-    setLineItems([{ description: '', quantity: 1, unit_price: 0 }])
+    setLineItems([{ description: '', quantity: 1, unit_price: '' }])
   }
 
   function openPanel() {
@@ -210,7 +212,9 @@ export default function InvoicesPage() {
       .select().single()
     if (invError || !invoice) { setError(invError?.message ?? 'Failed'); setSubmitting(false); return }
 
-    const itemsToInsert = lineItems.filter((i) => i.description.trim()).map((i) => ({ invoice_id: invoice.id, description: i.description, quantity: i.quantity, unit_price: i.unit_price }))
+    const itemsToInsert = lineItems
+      .filter((i) => String(i.description).trim())
+      .map((i) => ({ invoice_id: invoice.id, description: i.description, quantity: Number(i.quantity) || 0, unit_price: Number(i.unit_price) || 0 }))
     if (itemsToInsert.length > 0) {
       const { error: iliError } = await supabase.from('invoice_line_items').insert(itemsToInsert)
       if (iliError) { setError(iliError.message); setSubmitting(false); return }
@@ -411,7 +415,7 @@ export default function InvoicesPage() {
                   </div>
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[11px] text-gray-400">
-                      Line total: <span className="font-semibold text-gray-600">₦{(item.quantity * item.unit_price).toLocaleString()}</span>
+                      Line total: <span className="font-semibold text-gray-600">₦{((Number(item.quantity) || 0) * (Number(item.unit_price) || 0)).toLocaleString()}</span>
                     </span>
                     {lineItems.length > 1 && (
                       <button type="button" onClick={() => setLineItems((prev) => prev.filter((_, idx) => idx !== i))} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600">
@@ -421,7 +425,7 @@ export default function InvoicesPage() {
                   </div>
                 </div>
               ))}
-              <button type="button" onClick={() => setLineItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0 }])} className="flex items-center gap-1.5 text-xs text-green-600 hover:text-green-700 font-medium">
+              <button type="button" onClick={() => setLineItems((prev) => [...prev, { description: '', quantity: 1, unit_price: '' }])} className="flex items-center gap-1.5 text-xs text-green-600 hover:text-green-700 font-medium">
                 <Plus size={13} /> Add line item
               </button>
             </div>
