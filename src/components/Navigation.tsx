@@ -57,7 +57,6 @@ export default function Navigation() {
   const profileRef = useRef<HTMLDivElement>(null)
 
   const canManage = userRole === 'owner' || userRole === 'admin'
-
   const authPages = ['/login', '/signup', '/forgot-password', '/reset-password']
 
   useEffect(() => {
@@ -114,6 +113,8 @@ export default function Navigation() {
   const isFinanceActive = financeNav.some(item => pathname === item.href)
   const isSecurityActive = securityNav.some(item => pathname === item.href)
 
+  // IMPORTANT: this early return must come AFTER all hooks above,
+  // otherwise React throws error #300 (hooks count changes between pages).
   if (authPages.includes(pathname)) return null
 
   return (
