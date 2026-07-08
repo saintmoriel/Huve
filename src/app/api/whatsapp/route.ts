@@ -9,7 +9,7 @@ import twilio from 'twilio'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { to, message } = body
+  const { to, message, mediaUrl } = body
 
   if (!to || !message) {
     return NextResponse.json({ error: 'Missing "to" or "message"' }, { status: 400 })
@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
     console.log('--- WhatsApp message (simulated — Twilio not configured) ---')
     console.log('To:', to)
     console.log('Message:', message)
+    if (mediaUrl) console.log('Media:', mediaUrl)
     console.log('-----------------------------------------------------------')
     return NextResponse.json({ success: true, simulated: true, to, message })
   }
@@ -35,11 +36,20 @@ export async function POST(req: NextRequest) {
 
   try {
     const client = twilio(accountSid, authToken)
-    const result = await client.messages.create({
+    const payload: {
+      from: string
+      to: string
+      body: string
+      mediaUrl?: string[]
+    } = {
       from: fromNumber,
       to: toWhatsApp,
       body: message,
-    })
+    }
+    // Attach the PDF (or any media) if a public URL was provided
+    if (mediaUrl) payload.mediaUrl = [mediaUrl]
+
+    const result = await client.messages.create(payload)
 
     return NextResponse.json({ success: true, simulated: false, sid: result.sid, status: result.status })
   } catch (err: unknown) {
