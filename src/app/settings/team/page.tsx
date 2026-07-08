@@ -32,6 +32,8 @@ export default function TeamSettingsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [loading, setLoading] = useState(true)
   const [myRole, setMyRole] = useState<string | null>(null)
+  const [myId, setMyId] = useState<string | null>(null)
+  const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
 
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('staff')
@@ -45,6 +47,7 @@ export default function TeamSettingsPage() {
     try {
       const user = await getSessionUser()
       if (!user) { setLoading(false); return }
+      setMyId(user.id)
 
       const { data: me } = await supabase
         .from('profiles').select('role').eq('id', user.id).single()
@@ -98,6 +101,22 @@ export default function TeamSettingsPage() {
     loadData()
   }
 
+  async function updateRole(memberId: string, newRole: string) {
+    setSavingRoleId(memberId)
+    setError(null)
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ role: newRole })
+      .eq('id', memberId)
+    setSavingRoleId(null)
+    if (updateError) {
+      setError(`Could not change role: ${updateError.message}`)
+      return
+    }
+    // Reflect the change locally
+    setMembers((prev) => prev.map((m) => m.id === memberId ? { ...m, role: newRole } : m))
+  }
+
   async function copyLink(link: string) {
     try {
       await navigator.clipboard.writeText(link)
@@ -115,6 +134,7 @@ export default function TeamSettingsPage() {
   }
 
   const canInvite = myRole === 'owner' || myRole === 'admin'
+  const canManageRoles = myRole === 'owner' || myRole === 'admin'
 
   if (loading) {
     return <p className="text-xs text-gray-400 font-mono">Loading team operators...</p>
@@ -219,30 +239,55 @@ export default function TeamSettingsPage() {
           </h3>
         </div>
         <div className="border border-gray-200 rounded-lg overflow-hidden">
-          {members.map((m, i) => (
-            <div
-              key={m.id}
-              className={`flex items-center justify-between px-4 py-3 ${i !== 0 ? 'border-t border-gray-100' : ''}`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[#f0faf4] border border-green-100 flex items-center justify-center">
-                  <span className="text-sm font-bold text-green-700">
-                    {(m.full_name ?? '?').charAt(0).toUpperCase()}
+          {members.map((m, i) => {
+            // Role can be changed only by owner/admin, and never for the owner or yourself
+            const editable = canManageRoles && m.role !== 'owner' && m.id !== myId
+            return (
+              <div
+                key={m.id}
+                className={`flex items-center justify-between px-4 py-3 ${i !== 0 ? 'border-t border-gray-100' : ''}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-[#f0faf4] border border-green-100 flex items-center justify-center">
+                    <span className="text-sm font-bold text-green-700">
+                      {(m.full_name ?? '?').charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">
+                      {m.full_name ?? 'Unnamed operator'}
+                      {m.id === myId && <span className="text-[11px] text-gray-400 font-normal"> (you)</span>}
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      Joined {new Date(m.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                </div>
+
+                {editable ? (
+                  <select
+                    value={m.role}
+                    disabled={savingRoleId === m.id}
+                    onChange={(e) => updateRole(m.id, e.target.value)}
+                    className="text-xs font-medium px-2.5 py-1.5 bg-white border border-gray-300 rounded-md outline-none focus:border-[#0a1510] focus:ring-1 focus:ring-[#0a1510] transition-colors disabled:opacity-50"
+                  >
+                    <option value="staff">Staff</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                ) : (
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${roleBadge[m.role] ?? roleBadge.staff}`}>
+                    {m.role}
                   </span>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-800">{m.full_name ?? 'Unnamed operator'}</p>
-                  <p className="text-[11px] text-gray-400">
-                    Joined {new Date(m.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </p>
-                </div>
+                )}
               </div>
-              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${roleBadge[m.role] ?? roleBadge.staff}`}>
-                {m.role}
-              </span>
-            </div>
-          ))}
+            )
+          })}
         </div>
+        {canManageRoles && (
+          <p className="text-[11px] text-gray-400 mt-2">
+            Change an operator&apos;s role using the dropdown. The owner&apos;s role and your own cannot be changed here.
+          </p>
+        )}
       </div>
 
       {/* Pending invitations */}

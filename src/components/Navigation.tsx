@@ -19,6 +19,7 @@ import {
   Search,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { getSessionUser } from '@/lib/getSessionUser'
 
 const primaryNav = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -46,6 +47,7 @@ export default function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  const [userRole, setUserRole] = useState<string>('staff')
   const [financeOpen, setFinanceOpen] = useState(false)
   const [securityOpen, setSecurityOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -54,21 +56,24 @@ export default function Navigation() {
   const securityRef = useRef<HTMLDivElement>(null)
   const profileRef = useRef<HTMLDivElement>(null)
 
+  const canManage = userRole === 'owner' || userRole === 'admin'
+
   const authPages = ['/login', '/signup', '/forgot-password', '/reset-password']
-  if (authPages.includes(pathname)) return null
 
   useEffect(() => {
     async function loadUser() {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await getSessionUser()
       if (!user) return
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('full_name, business_id')
+        .select('full_name, business_id, role')
         .eq('id', user.id)
         .single()
 
       if (!profile) return
+
+      setUserRole(profile.role ?? 'staff')
 
       const { data: business } = await supabase
         .from('businesses')
@@ -108,6 +113,8 @@ export default function Navigation() {
 
   const isFinanceActive = financeNav.some(item => pathname === item.href)
   const isSecurityActive = securityNav.some(item => pathname === item.href)
+
+  if (authPages.includes(pathname)) return null
 
   return (
     <nav className="fixed top-0 left-0 right-0 h-16 bg-[#0a1510] z-50 flex items-center px-6 border-b border-[#1a3a24]">
@@ -176,44 +183,46 @@ export default function Navigation() {
           )}
         </div>
 
-        {/* Security dropdown */}
-        <div ref={securityRef} className="relative">
-          <button
-            onClick={() => { setSecurityOpen(!securityOpen); setFinanceOpen(false); setProfileOpen(false) }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-              isSecurityActive
-                ? 'bg-[#1a3a24] text-white'
-                : 'text-gray-400 hover:text-white hover:bg-[#1a3a24]/50'
-            }`}
-          >
-            <ShieldCheck size={15} className={isSecurityActive ? 'text-green-400' : 'text-gray-500'} />
-            Security
-            <ChevronDown size={13} className={`transition-transform ${securityOpen ? 'rotate-180' : ''}`} />
-          </button>
+        {/* Security dropdown — owner/admin only */}
+        {canManage && (
+          <div ref={securityRef} className="relative">
+            <button
+              onClick={() => { setSecurityOpen(!securityOpen); setFinanceOpen(false); setProfileOpen(false) }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                isSecurityActive
+                  ? 'bg-[#1a3a24] text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-[#1a3a24]/50'
+              }`}
+            >
+              <ShieldCheck size={15} className={isSecurityActive ? 'text-green-400' : 'text-gray-500'} />
+              Security
+              <ChevronDown size={13} className={`transition-transform ${securityOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-          {securityOpen && (
-            <div className="absolute top-11 left-0 w-48 bg-white rounded-xl border border-gray-100 shadow-lg overflow-hidden z-50">
-              {securityNav.map((item) => {
-                const isActive = pathname === item.href
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setSecurityOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 text-sm transition-colors ${
-                      isActive
-                        ? 'bg-green-50 text-green-700 font-medium'
-                        : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    <item.icon size={15} className={isActive ? 'text-green-600' : 'text-gray-400'} />
-                    {item.label}
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </div>
+            {securityOpen && (
+              <div className="absolute top-11 left-0 w-48 bg-white rounded-xl border border-gray-100 shadow-lg overflow-hidden z-50">
+                {securityNav.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setSecurityOpen(false)}
+                      className={`flex items-center gap-3 px-4 py-3 text-sm transition-colors ${
+                        isActive
+                          ? 'bg-green-50 text-green-700 font-medium'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      <item.icon size={15} className={isActive ? 'text-green-600' : 'text-gray-400'} />
+                      {item.label}
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Right side */}
@@ -263,17 +272,20 @@ export default function Navigation() {
           )}
         </div>
 
-        <Link
-          href="/settings"
-          className={`p-2 rounded-lg transition-colors ${
-            pathname.startsWith('/settings')
-              ? 'bg-[#1a3a24] text-white'
-              : 'hover:bg-[#1a3a24] text-gray-400 hover:text-white'
-          }`}
-          title="Workspace settings"
-        >
-          <Settings size={18} />
-        </Link>
+        {/* Settings gear — owner/admin only */}
+        {canManage && (
+          <Link
+            href="/settings"
+            className={`p-2 rounded-lg transition-colors ${
+              pathname.startsWith('/settings')
+                ? 'bg-[#1a3a24] text-white'
+                : 'hover:bg-[#1a3a24] text-gray-400 hover:text-white'
+            }`}
+            title="Workspace settings"
+          >
+            <Settings size={18} />
+          </Link>
+        )}
 
         <div className="w-px h-6 bg-[#1a3a24]" />
 
@@ -306,23 +318,27 @@ export default function Navigation() {
                   <p className="text-xs text-gray-400 mt-0.5">{userInfo?.businessName}</p>
                 </div>
                 <div className="p-1">
-                  <Link
-                    href="/settings"
-                    onClick={() => setProfileOpen(false)}
-                    className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-                  >
-                    <Settings size={15} />
-                    Workspace profile
-                  </Link>
-                  <Link
-                    href="/settings/team"
-                    onClick={() => setProfileOpen(false)}
-                    className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-                  >
-                    <Users size={15} />
-                    Team operators
-                  </Link>
-                  <div className="my-1 border-t border-gray-100" />
+                  {canManage && (
+                    <Link
+                      href="/settings"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      <Settings size={15} />
+                      Workspace profile
+                    </Link>
+                  )}
+                  {canManage && (
+                    <Link
+                      href="/settings/team"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      <Users size={15} />
+                      Team operators
+                    </Link>
+                  )}
+                  {canManage && <div className="my-1 border-t border-gray-100" />}
                   <button
                     onClick={handleLogout}
                     className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors"
