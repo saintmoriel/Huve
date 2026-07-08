@@ -95,7 +95,7 @@ export default function InvoicesPage() {
     const { data: invoice, error: invError } = await supabase
       .from('invoices')
       .insert({ business_id: businessId, client_id: quotation.client_id, quotation_id: quotation.id, status: 'unpaid', total: quotation.total })
-      .select('id, invoice_number, created_at, due_date, total')
+      .select('id, invoice_number, created_at, due_date, issue_date, total')
       .single()
     if (invError || !invoice) { setError(invError?.message ?? 'Failed'); setGenerating(null); return }
 
@@ -112,7 +112,7 @@ export default function InvoicesPage() {
 
     // 4. Fetch business + client details for the PDF
     const { data: business } = await supabase
-      .from('businesses').select('name, address, phone, email').eq('id', businessId).single()
+      .from('businesses').select('name, address, phone, email, payment_instructions').eq('id', businessId).single()
     const { data: clientRecord } = await supabase
       .from('clients').select('name, phone').eq('id', quotation.client_id).single()
 
@@ -123,14 +123,16 @@ export default function InvoicesPage() {
     try {
       const pdfBytes = await generateInvoicePdf({
         invoiceLabel,
-        createdAt: invoice.created_at,
+        issueDate: invoice.issue_date ?? invoice.created_at,
         dueDate: invoice.due_date,
         total: Number(invoice.total),
+        amountPaid: 0,
         business: {
           name: business?.name ?? '',
           address: business?.address ?? null,
           phone: business?.phone ?? null,
           email: business?.email ?? null,
+          paymentInstructions: business?.payment_instructions ?? null,
         },
         clientName: clientRecord?.name ?? 'Client',
         lineItems: items,
