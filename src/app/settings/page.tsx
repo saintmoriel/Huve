@@ -5,7 +5,7 @@ import { getSessionUser } from '@/lib/getSessionUser'
 import { supabase } from '@/lib/supabase'
 import {
   Building2, Save, Upload, Globe, Mail, Phone, MapPin,
-  Link2, AtSign, Users as UsersIcon, Loader2,
+  Link2, AtSign, Users as UsersIcon, Loader2, Lock, Landmark,
 } from 'lucide-react'
 
 type BusinessProfile = {
@@ -19,11 +19,13 @@ type BusinessProfile = {
   linkedin_url: string
   twitter_url: string
   logo_url: string | null
+  payment_instructions: string
 }
 
 const EMPTY: BusinessProfile = {
   name: '', tagline: '', industry: '', email: '', phone: '',
   address: '', website: '', linkedin_url: '', twitter_url: '', logo_url: null,
+  payment_instructions: '',
 }
 
 const INDUSTRIES = [
@@ -33,6 +35,7 @@ const INDUSTRIES = [
 
 export default function ProfileSettingsPage() {
   const [businessId, setBusinessId] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<string>('staff')
   const [form, setForm] = useState<BusinessProfile>(EMPTY)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
@@ -43,6 +46,8 @@ export default function ProfileSettingsPage() {
   })
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const canManage = userRole === 'owner' || userRole === 'admin'
+
   useEffect(() => {
     async function load() {
       try {
@@ -50,14 +55,21 @@ export default function ProfileSettingsPage() {
         if (!user) { setLoading(false); return }
 
         const { data: profile } = await supabase
-          .from('profiles').select('business_id').eq('id', user.id).single()
+          .from('profiles').select('business_id, role').eq('id', user.id).single()
         if (!profile) { setLoading(false); return }
 
         setBusinessId(profile.business_id)
+        setUserRole(profile.role)
+
+        // Staff cannot view workspace settings — stop here, the guard screen shows.
+        if (profile.role !== 'owner' && profile.role !== 'admin') {
+          setLoading(false)
+          return
+        }
 
         const { data: business } = await supabase
           .from('businesses')
-          .select('name, tagline, industry, email, phone, address, website, linkedin_url, twitter_url, logo_url')
+          .select('name, tagline, industry, email, phone, address, website, linkedin_url, twitter_url, logo_url, payment_instructions')
           .eq('id', profile.business_id)
           .single()
 
@@ -73,6 +85,7 @@ export default function ProfileSettingsPage() {
             linkedin_url: business.linkedin_url ?? '',
             twitter_url: business.twitter_url ?? '',
             logo_url: business.logo_url ?? null,
+            payment_instructions: business.payment_instructions ?? '',
           })
         }
 
@@ -102,7 +115,6 @@ export default function ProfileSettingsPage() {
     const file = e.target.files?.[0]
     if (!file || !businessId) return
 
-    // Basic client-side guardrails
     if (!file.type.startsWith('image/')) {
       setMessage({ type: 'error', text: 'Please choose an image file.' })
       return
@@ -115,7 +127,6 @@ export default function ProfileSettingsPage() {
     setUploading(true)
     setMessage(null)
 
-    // Store at logos/{business_id}/logo.<ext> so the storage policy can scope it
     const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
     const path = `${businessId}/logo.${ext}`
 
@@ -130,7 +141,6 @@ export default function ProfileSettingsPage() {
     }
 
     const { data: pub } = supabase.storage.from('logos').getPublicUrl(path)
-    // Cache-bust so a replaced logo shows immediately
     const publicUrl = `${pub.publicUrl}?v=${Date.now()}`
 
     const { error: saveError } = await supabase
@@ -164,6 +174,7 @@ export default function ProfileSettingsPage() {
         website: form.website || null,
         linkedin_url: form.linkedin_url || null,
         twitter_url: form.twitter_url || null,
+        payment_instructions: form.payment_instructions || null,
       })
       .eq('id', businessId)
 
@@ -174,6 +185,21 @@ export default function ProfileSettingsPage() {
   }
 
   if (loading) return <p className="text-xs text-gray-400 font-mono">Loading profile...</p>
+
+  // RBAC guard: staff cannot access workspace settings
+  if (!canManage) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+          <Lock size={24} className="text-gray-400" />
+        </div>
+        <h2 className="text-base font-semibold text-gray-700 mb-1">Restricted area</h2>
+        <p className="text-sm text-gray-400 max-w-xs">
+          Workspace settings can only be managed by an owner or admin. Contact your workspace owner if you need changes.
+        </p>
+      </div>
+    )
+  }
 
   const initials = (form.name || '?').split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
   const inputClass = "w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-md outline-none focus:border-[#0a1510] focus:ring-1 focus:ring-[#0a1510] transition-colors text-[#374151]"
@@ -306,6 +332,22 @@ export default function ProfileSettingsPage() {
               <input type="text" placeholder="x.com/..." value={form.twitter_url}
                 onChange={(e) => update('twitter_url', e.target.value)} className={iconInputClass} />
             </div>
+          </div>
+
+          {/* Payment instructions — appears on every invoice */}
+          <div className="md:col-span-2">
+            <label className={labelClass}>Payment Instructions</label>
+            <div className="relative">
+              <Landmark className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+              <textarea
+                rows={3}
+                placeholder="Bank: GTBank  ·  Account: 0123456789  ·  Name: Your Company Ltd"
+                value={form.payment_instructions}
+                onChange={(e) => update('payment_instructions', e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-gray-300 rounded-md outline-none focus:border-[#0a1510] focus:ring-1 focus:ring-[#0a1510] transition-colors text-[#374151] resize-none"
+              />
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">These bank details appear at the bottom of every invoice you generate.</p>
           </div>
         </div>
 
