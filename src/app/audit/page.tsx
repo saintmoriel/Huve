@@ -57,7 +57,7 @@ export default function AuditPage() {
         <div className="flex items-start gap-3 px-4 py-3 bg-[#f0faf4] border border-green-100 rounded-xl mb-6">
           <ShieldCheck size={16} className="text-green-600 mt-0.5 shrink-0" />
           <p className="text-sm text-green-800">
-            This log is tamper-evident and cryptographically scoped to Primers Group. No other tenant can access or view these records.
+            This log is tamper-evident and cryptographically scoped to your business. No other tenant can access or view these records.
           </p>
         </div>
 
