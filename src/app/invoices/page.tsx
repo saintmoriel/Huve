@@ -27,6 +27,8 @@ type Invoice = {
   created_at: string
   quotation_id: string | null
   clients: { name: string } | null
+  amountPaid?: number
+  amountDue?: number
 }
 
 const statusConfig: Record<string, { label: string; classes: string }> = {
@@ -74,8 +76,24 @@ export default function InvoicesPage() {
       .select('id, status, total, due_date, created_at, quotation_id, clients(name)')
       .order('created_at', { ascending: false })
 
+    // Fetch all payments to compute amount paid / due per invoice
+    const { data: paymentsData } = await supabase
+      .from('payments')
+      .select('invoice_id, amount')
+
+    const paidByInvoice = new Map<string, number>()
+    ;(paymentsData ?? []).forEach((pmt: { invoice_id: string; amount: number }) => {
+      paidByInvoice.set(pmt.invoice_id, (paidByInvoice.get(pmt.invoice_id) ?? 0) + Number(pmt.amount))
+    })
+
     if (invError) setError(invError.message)
-    else setInvoices((invoicesData as unknown as Invoice[]) ?? [])
+    else {
+      const enriched = ((invoicesData as unknown as Invoice[]) ?? []).map((inv) => {
+        const paid = paidByInvoice.get(inv.id) ?? 0
+        return { ...inv, amountPaid: paid, amountDue: Math.max(0, Number(inv.total) - paid) }
+      })
+      setInvoices(enriched)
+    }
     setLoading(false)
   }
 
@@ -335,7 +353,17 @@ export default function InvoicesPage() {
                           <span className="text-sm font-medium text-gray-800">{inv.clients?.name}</span>
                         </div>
                       </td>
-                      <td className="px-5 py-4 text-sm font-semibold text-gray-900">₦{Number(inv.total).toLocaleString()}</td>
+                      <td className="px-5 py-4">
+                        <p className="text-sm font-semibold text-gray-900">₦{Number(inv.total).toLocaleString()}</p>
+                        {(inv.amountPaid ?? 0) > 0 && (inv.amountDue ?? 0) > 0 && (
+                          <p className="text-[11px] text-gray-400">
+                            ₦{Number(inv.amountPaid).toLocaleString()} paid · ₦{Number(inv.amountDue).toLocaleString()} due
+                          </p>
+                        )}
+                        {(inv.amountDue ?? 0) === 0 && (inv.amountPaid ?? 0) > 0 && (
+                          <p className="text-[11px] text-green-600">Fully paid</p>
+                        )}
+                      </td>
                       <td className="px-5 py-4">
                         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusInfo.classes}`}>
                           {statusInfo.label}
