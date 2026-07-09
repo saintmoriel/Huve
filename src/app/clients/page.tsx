@@ -15,6 +15,7 @@ import {
   X,
   Plus,
   Trash2,
+  Pencil,
 } from 'lucide-react'
 import { getSessionUser } from '@/lib/getSessionUser'
 
@@ -38,6 +39,7 @@ export default function ClientsPage() {
   const [showModal, setShowModal] = useState(false)
   const [userRole, setUserRole] = useState<string>('staff')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   // form state
   const [name, setName] = useState('')
@@ -51,7 +53,8 @@ export default function ClientsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
 
-  const canDelete = userRole === 'owner' || userRole === 'admin'
+  const canManage = userRole === 'owner' || userRole === 'admin'
+  const isEditing = editingId !== null
 
   async function loadClients() {
     const user = await getSessionUser()
@@ -74,12 +77,42 @@ export default function ClientsPage() {
 
   useEffect(() => { loadClients() }, [])
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
     setError(null)
     setSuccess(false)
 
+    const fields = {
+      name,
+      contact_person: contactPerson || null,
+      industry: industry || null,
+      email: email || null,
+      phone: phone || null,
+      website: website || null,
+      address: address || null,
+      notes: notes || null,
+    }
+
+    if (isEditing) {
+      // Update existing client
+      const { error: updateError } = await supabase
+        .from('clients')
+        .update(fields)
+        .eq('id', editingId)
+
+      setSubmitting(false)
+      if (updateError) { setError(updateError.message); return }
+
+      // Reflect changes locally
+      setClients((prev) => prev.map((c) => c.id === editingId ? { ...c, ...fields } : c))
+      closeModal()
+      setSuccess(true)
+      setTimeout(() => setSuccess(false), 3000)
+      return
+    }
+
+    // Create new client
     const { data: { user } } = await supabase.auth.getUser()
     const { data: profile } = await supabase
       .from('profiles')
@@ -89,22 +122,14 @@ export default function ClientsPage() {
 
     const { error: insertError } = await supabase.from('clients').insert({
       business_id: profile!.business_id,
-      name,
-      contact_person: contactPerson || null,
-      industry: industry || null,
-      email: email || null,
-      phone: phone || null,
-      website: website || null,
-      address: address || null,
-      notes: notes || null,
+      ...fields,
     })
 
     setSubmitting(false)
     if (insertError) { setError(insertError.message); return }
 
-    resetForm()
+    closeModal()
     setSuccess(true)
-    setShowModal(false)
     setTimeout(() => setSuccess(false), 3000)
     loadClients()
   }
@@ -124,7 +149,6 @@ export default function ClientsPage() {
       setError(`Could not delete client: ${deleteError.message}`)
       return
     }
-    // Remove from the list locally
     setClients((prev) => prev.filter((c) => c.id !== client.id))
   }
 
@@ -135,13 +159,29 @@ export default function ClientsPage() {
     setError(null)
   }
 
-  function openModal() {
+  function openAddModal() {
     resetForm()
+    setEditingId(null)
+    setShowModal(true)
+  }
+
+  function openEditModal(client: Client) {
+    setName(client.name ?? '')
+    setContactPerson(client.contact_person ?? '')
+    setIndustry(client.industry ?? '')
+    setEmail(client.email ?? '')
+    setPhone(client.phone ?? '')
+    setWebsite(client.website ?? '')
+    setAddress(client.address ?? '')
+    setNotes(client.notes ?? '')
+    setError(null)
+    setEditingId(client.id)
     setShowModal(true)
   }
 
   function closeModal() {
     setShowModal(false)
+    setEditingId(null)
     resetForm()
   }
 
@@ -154,13 +194,13 @@ export default function ClientsPage() {
         title="Clients"
         subtitle="Manage your client roster and contact information."
         breadcrumb={['Workspace', 'Clients']}
-        action={clients.length > 0 ? { label: 'Add Client', onClick: openModal } : undefined}
+        action={clients.length > 0 ? { label: 'Add Client', onClick: openAddModal } : undefined}
       />
 
       <div className="px-8 py-6">
         {success && (
           <div className="mb-4 px-4 py-3 bg-green-50 border border-green-100 rounded-lg text-sm text-green-700">
-            Client added successfully.
+            {isEditing ? 'Client updated successfully.' : 'Client saved successfully.'}
           </div>
         )}
         {error && !showModal && (
@@ -186,7 +226,7 @@ export default function ClientsPage() {
               Add your first client to start managing engagements, quotations, and invoices.
             </p>
             <button
-              onClick={openModal}
+              onClick={openAddModal}
               className="flex items-center gap-2 px-5 py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors"
             >
               <Plus size={15} />
@@ -212,13 +252,22 @@ export default function ClientsPage() {
                       <p className="text-base font-semibold text-gray-900">{client.name}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     {client.industry && (
-                      <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 text-gray-500 rounded-full">
+                      <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 text-gray-500 rounded-full mr-1">
                         {client.industry}
                       </span>
                     )}
-                    {canDelete && (
+                    {canManage && (
+                      <button
+                        onClick={() => openEditModal(client)}
+                        title="Edit client"
+                        className="p-2 rounded-lg text-gray-300 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                    {canManage && (
                       <button
                         onClick={() => handleDelete(client)}
                         disabled={deletingId === client.id}
@@ -289,8 +338,8 @@ export default function ClientsPage() {
             {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">Add New Client</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Fill in the client details below</p>
+                <h2 className="text-base font-semibold text-gray-900">{isEditing ? 'Edit Client' : 'Add New Client'}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{isEditing ? 'Update the client details below' : 'Fill in the client details below'}</p>
               </div>
               <button
                 onClick={closeModal}
@@ -301,7 +350,7 @@ export default function ClientsPage() {
             </div>
 
             {/* Modal form */}
-            <form onSubmit={handleCreate} className="px-6 py-5 space-y-4">
+            <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
               {error && (
                 <div className="px-3 py-2.5 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
                   {error}
@@ -416,7 +465,7 @@ export default function ClientsPage() {
                   disabled={submitting}
                   className="flex-1 py-2.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                 >
-                  {submitting ? 'Adding...' : 'Add Client'}
+                  {submitting ? (isEditing ? 'Saving...' : 'Adding...') : (isEditing ? 'Save Changes' : 'Add Client')}
                 </button>
               </div>
             </form>
