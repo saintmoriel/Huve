@@ -14,6 +14,7 @@ import {
   User,
   X,
   Plus,
+  Trash2,
 } from 'lucide-react'
 import { getSessionUser } from '@/lib/getSessionUser'
 
@@ -35,6 +36,8 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showModal, setShowModal] = useState(false)
+  const [userRole, setUserRole] = useState<string>('staff')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // form state
   const [name, setName] = useState('')
@@ -48,9 +51,16 @@ export default function ClientsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
 
+  const canDelete = userRole === 'owner' || userRole === 'admin'
+
   async function loadClients() {
     const user = await getSessionUser()
     if (!user) { router.push('/login'); return }
+
+    // Fetch this user's role for permission gating
+    const { data: profile } = await supabase
+      .from('profiles').select('role').eq('id', user.id).single()
+    if (profile) setUserRole(profile.role)
 
     const { data, error: clientsError } = await supabase
       .from('clients')
@@ -97,6 +107,25 @@ export default function ClientsPage() {
     setShowModal(false)
     setTimeout(() => setSuccess(false), 3000)
     loadClients()
+  }
+
+  async function handleDelete(client: Client) {
+    const confirmed = window.confirm(
+      `Delete "${client.name}"? This cannot be undone. Any engagements, quotations, or invoices linked to this client will not be removed.`
+    )
+    if (!confirmed) return
+
+    setDeletingId(client.id)
+    setError(null)
+    const { error: deleteError } = await supabase.from('clients').delete().eq('id', client.id)
+    setDeletingId(null)
+
+    if (deleteError) {
+      setError(`Could not delete client: ${deleteError.message}`)
+      return
+    }
+    // Remove from the list locally
+    setClients((prev) => prev.filter((c) => c.id !== client.id))
   }
 
   function resetForm() {
@@ -183,11 +212,23 @@ export default function ClientsPage() {
                       <p className="text-base font-semibold text-gray-900">{client.name}</p>
                     </div>
                   </div>
-                  {client.industry && (
-                    <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 text-gray-500 rounded-full">
-                      {client.industry}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {client.industry && (
+                      <span className="text-xs font-medium px-2.5 py-1 bg-gray-100 text-gray-500 rounded-full">
+                        {client.industry}
+                      </span>
+                    )}
+                    {canDelete && (
+                      <button
+                        onClick={() => handleDelete(client)}
+                        disabled={deletingId === client.id}
+                        title="Delete client"
+                        className="p-2 rounded-lg text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-3">
