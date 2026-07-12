@@ -17,6 +17,8 @@ import {
   Trash2,
   Pencil,
   Hash,
+  Users,
+  ChevronDown,
 } from 'lucide-react'
 import { getSessionUser } from '@/lib/getSessionUser'
 
@@ -42,6 +44,45 @@ type Client = {
   postal_code: string | null
   status: string | null
   compliance_flags: string | null
+}
+
+type Contact = {
+  id: string
+  client_id: string
+  first_name: string
+  last_name: string | null
+  job_title: string | null
+  email: string | null
+  phone: string | null
+  deal_role: string | null
+  preferred_channel: string | null
+}
+
+const DEAL_ROLES = [
+  { value: '', label: 'Role in deals...' },
+  { value: 'decision_maker', label: 'Decision maker' },
+  { value: 'approver', label: 'Approver' },
+  { value: 'technical', label: 'Technical' },
+  { value: 'finance', label: 'Finance' },
+]
+
+const CHANNELS = [
+  { value: '', label: 'Preferred channel...' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'email', label: 'Email' },
+  { value: 'call', label: 'Call' },
+]
+
+const dealRoleLabel: Record<string, string> = {
+  decision_maker: 'Decision maker',
+  approver: 'Approver',
+  technical: 'Technical',
+  finance: 'Finance',
+}
+
+const EMPTY_CONTACT = {
+  first_name: '', last_name: '', job_title: '',
+  email: '', phone: '', deal_role: '', preferred_channel: '',
 }
 
 const CLIENT_TYPES = [
@@ -103,6 +144,13 @@ export default function ClientsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
 
+  // Contacts
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [expandedClient, setExpandedClient] = useState<string | null>(null)
+  const [addingContactFor, setAddingContactFor] = useState<string | null>(null)
+  const [contactForm, setContactForm] = useState({ ...EMPTY_CONTACT })
+  const [savingContact, setSavingContact] = useState(false)
+
   const canManage = userRole === 'owner' || userRole === 'admin'
   const isEditing = editingId !== null
 
@@ -125,7 +173,65 @@ export default function ClientsPage() {
 
     if (clientsError) setError(clientsError.message)
     else setClients(data ?? [])
+
+    // Load all contacts for this business (RLS scopes them automatically)
+    const { data: contactsData } = await supabase
+      .from('client_contacts')
+      .select('id, client_id, first_name, last_name, job_title, email, phone, deal_role, preferred_channel')
+      .order('created_at', { ascending: true })
+    setContacts(contactsData ?? [])
+
     setLoading(false)
+  }
+
+  function contactsFor(clientId: string) {
+    return contacts.filter((c) => c.client_id === clientId)
+  }
+
+  function setContactField(key: keyof typeof EMPTY_CONTACT, value: string) {
+    setContactForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  async function handleAddContact(clientId: string) {
+    if (!contactForm.first_name.trim()) { setError('Contact needs at least a first name.'); return }
+    setSavingContact(true)
+    setError(null)
+
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: profile } = await supabase
+      .from('profiles').select('business_id').eq('id', user!.id).single()
+
+    const { data: created, error: contactError } = await supabase
+      .from('client_contacts')
+      .insert({
+        business_id: profile!.business_id,
+        client_id: clientId,
+        first_name: contactForm.first_name,
+        last_name: contactForm.last_name || null,
+        job_title: contactForm.job_title || null,
+        email: contactForm.email || null,
+        phone: contactForm.phone || null,
+        deal_role: contactForm.deal_role || null,
+        preferred_channel: contactForm.preferred_channel || null,
+      })
+      .select('id, client_id, first_name, last_name, job_title, email, phone, deal_role, preferred_channel')
+      .single()
+
+    setSavingContact(false)
+    if (contactError) { setError(`Could not add contact: ${contactError.message}`); return }
+
+    if (created) setContacts((prev) => [...prev, created as Contact])
+    setContactForm({ ...EMPTY_CONTACT })
+    setAddingContactFor(null)
+  }
+
+  async function handleDeleteContact(contact: Contact) {
+    const who = [contact.first_name, contact.last_name].filter(Boolean).join(' ')
+    if (!window.confirm(`Remove ${who} from this client?`)) return
+
+    const { error: delError } = await supabase.from('client_contacts').delete().eq('id', contact.id)
+    if (delError) { setError(`Could not remove contact: ${delError.message}`); return }
+    setContacts((prev) => prev.filter((c) => c.id !== contact.id))
   }
 
   useEffect(() => { loadClients() }, [])
@@ -397,6 +503,108 @@ export default function ClientsPage() {
                       <div className="flex items-center gap-2 col-span-2">
                         <FileText size={13} className="text-gray-400 shrink-0" />
                         <span className="text-sm text-gray-500 truncate">{client.notes}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Contacts */}
+                  <div className="mt-4 pt-3 border-t border-gray-50">
+                    <button
+                      onClick={() => setExpandedClient(expandedClient === client.id ? null : client.id)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 transition-colors"
+                    >
+                      <Users size={13} />
+                      Contacts ({contactsFor(client.id).length})
+                      <ChevronDown size={13} className={`transition-transform ${expandedClient === client.id ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {expandedClient === client.id && (
+                      <div className="mt-3 space-y-2">
+                        {contactsFor(client.id).length === 0 && addingContactFor !== client.id && (
+                          <p className="text-xs text-gray-400">No contacts yet for this client.</p>
+                        )}
+
+                        {contactsFor(client.id).map((ct) => (
+                          <div key={ct.id} className="flex items-center justify-between bg-[#f8faf8] border border-gray-100 rounded-lg px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate">
+                                {[ct.first_name, ct.last_name].filter(Boolean).join(' ')}
+                                {ct.job_title && <span className="text-xs font-normal text-gray-400"> · {ct.job_title}</span>}
+                              </p>
+                              <p className="text-[11px] text-gray-400 truncate">
+                                {[
+                                  ct.deal_role ? dealRoleLabel[ct.deal_role] : null,
+                                  ct.email,
+                                  ct.phone,
+                                  ct.preferred_channel ? `prefers ${ct.preferred_channel}` : null,
+                                ].filter(Boolean).join(' · ')}
+                              </p>
+                            </div>
+                            {canManage && (
+                              <button
+                                onClick={() => handleDeleteContact(ct)}
+                                title="Remove contact"
+                                className="p-1.5 rounded text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+
+                        {addingContactFor === client.id ? (
+                          <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <input type="text" placeholder="First name *" value={contactForm.first_name}
+                                onChange={(e) => setContactField('first_name', e.target.value)}
+                                className="px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500" />
+                              <input type="text" placeholder="Last name" value={contactForm.last_name}
+                                onChange={(e) => setContactField('last_name', e.target.value)}
+                                className="px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500" />
+                              <input type="text" placeholder="Job title" value={contactForm.job_title}
+                                onChange={(e) => setContactField('job_title', e.target.value)}
+                                className="px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 col-span-2" />
+                              <input type="email" placeholder="Email" value={contactForm.email}
+                                onChange={(e) => setContactField('email', e.target.value)}
+                                className="px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500" />
+                              <input type="text" placeholder="Phone / WhatsApp" value={contactForm.phone}
+                                onChange={(e) => setContactField('phone', e.target.value)}
+                                className="px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500" />
+                              <select value={contactForm.deal_role}
+                                onChange={(e) => setContactField('deal_role', e.target.value)}
+                                className="px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white">
+                                {DEAL_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                              </select>
+                              <select value={contactForm.preferred_channel}
+                                onChange={(e) => setContactField('preferred_channel', e.target.value)}
+                                className="px-2.5 py-2 text-sm border border-gray-200 rounded outline-none focus:border-green-500 bg-white">
+                                {CHANNELS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                              </select>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleAddContact(client.id)}
+                                disabled={savingContact}
+                                className="px-3 py-1.5 bg-[#0a1510] hover:bg-[#1a3a24] text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                              >
+                                {savingContact ? 'Saving...' : 'Save contact'}
+                              </button>
+                              <button
+                                onClick={() => { setAddingContactFor(null); setContactForm({ ...EMPTY_CONTACT }) }}
+                                className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setAddingContactFor(client.id); setContactForm({ ...EMPTY_CONTACT }) }}
+                            className="flex items-center gap-1.5 text-xs text-green-600 hover:text-green-700 font-medium"
+                          >
+                            <Plus size={12} /> Add contact
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
