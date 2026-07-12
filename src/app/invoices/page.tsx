@@ -9,6 +9,7 @@ import RightPanel from '@/components/RightPanel'
 import { generateInvoicePdf } from '@/lib/invoicePdf'
 import { Receipt, Plus, X, Zap } from 'lucide-react'
 import { getSessionUser } from '@/lib/getSessionUser'
+import { notify } from '@/lib/notify'
 
 type Client = { id: string; name: string }
 type Quotation = {
@@ -127,7 +128,7 @@ export default function InvoicesPage() {
     }
 
     await logAction({ businessId, action: 'created', tableName: 'invoices', recordId: invoice.id })
-
+    
     // 4. Fetch business + client details for the PDF
     const { data: business } = await supabase
       .from('businesses').select('name, address, phone, email, payment_instructions').eq('id', businessId).single()
@@ -135,7 +136,13 @@ export default function InvoicesPage() {
       .from('clients').select('name, phone').eq('id', quotation.client_id).single()
 
     const invoiceLabel = `INV-${String(invoice.invoice_number ?? 0).padStart(4, '0')}`
-
+    await notify({
+      businessId,
+      type: 'invoice',
+      title: 'Invoice generated',
+      body: `${invoiceLabel} for ${clientRecord?.name ?? 'a client'} · ₦${Number(quotation.total).toLocaleString()}`,
+      link: '/invoices',
+    })
     // 5. Generate the PDF, upload it, get a public URL
     let pdfUrl: string | null = null
     try {

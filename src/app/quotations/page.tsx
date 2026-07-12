@@ -7,6 +7,7 @@ import TopBar from '@/components/TopBar'
 import RightPanel from '@/components/RightPanel'
 import { FileText, Plus, X } from 'lucide-react'
 import { getSessionUser } from '@/lib/getSessionUser'
+import { notify } from '@/lib/notify'
 
 type Client = { id: string; name: string }
 type Engagement = { id: string; title: string; client_id: string }
@@ -118,7 +119,13 @@ export default function QuotationsPage() {
       const { error: iError } = await supabase.from('quotation_line_items').insert(itemsToInsert)
       if (iError) { setError(iError.message); setSubmitting(false); return }
     }
-
+    await notify({
+      businessId: profile!.business_id,
+      type: 'quotation',
+      title: 'Quotation created',
+      body: `New quotation · ₦${computedTotal.toLocaleString()}`,
+      link: '/quotations',
+    })
     setSubmitting(false)
     resetForm()
     setPanelOpen(false)

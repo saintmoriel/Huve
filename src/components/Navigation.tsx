@@ -55,9 +55,15 @@ export default function Navigation() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [businessId, setBusinessId] = useState<string | null>(null)
+  const [notifications, setNotifications] = useState<{ id: string; type: string; title: string; body: string | null; link: string | null; read_at: string | null; created_at: string }[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<{ type: string; label: string; href: string }[]>([])
+  const [searchOpen, setSearchOpen] = useState(false)
   const financeRef = useRef<HTMLDivElement>(null)
   const securityRef = useRef<HTMLDivElement>(null)
   const profileRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLDivElement>(null)
 
   const canManage = userRole === 'owner' || userRole === 'admin'
   const authPages = ['/login', '/signup', '/forgot-password', '/reset-password']
@@ -76,6 +82,7 @@ export default function Navigation() {
       if (!profile) return
 
       setUserRole(profile.role ?? 'staff')
+      setBusinessId(profile.business_id)
 
       const { data: business } = await supabase
         .from('businesses')
@@ -112,6 +119,127 @@ export default function Navigation() {
   useEffect(() => {
     setMobileOpen(false)
   }, [pathname])
+
+  // Global search across clients, engagements, quotations, invoices (debounced)
+  useEffect(() => {
+    const q = searchQuery.trim()
+    if (q.length < 2) { setSearchResults([]); return }
+
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      const results: { type: string; label: string; href: string }[] = []
+
+      const [clientsRes, engagementsRes, quotationsRes, invoicesRes] = await Promise.all([
+        supabase.from('clients').select('id, name').ilike('name', `%${q}%`).limit(4),
+        supabase.from('engagements').select('id, title').ilike('title', `%${q}%`).limit(4),
+        supabase.from('quotations').select('id, clients(name)').limit(20),
+        supabase.from('invoices').select('id, invoice_number, clients(name)').limit(20),
+      ])
+
+      ;(clientsRes.data ?? []).forEach((c: { id: string; name: string }) =>
+        results.push({ type: 'Client', label: c.name, href: '/clients' }))
+      ;(engagementsRes.data ?? []).forEach((e: { id: string; title: string }) =>
+        results.push({ type: 'Engagement', label: e.title, href: '/engagements' }))
+
+      const ql = q.toLowerCase()
+      ;((quotationsRes.data as unknown as { id: string; clients: { name: string } | null }[]) ?? [])
+        .filter((qt) => qt.clients?.name?.toLowerCase().includes(ql))
+        .slice(0, 4)
+        .forEach((qt) => results.push({ type: 'Quotation', label: qt.clients?.name ?? 'Quotation', href: '/quotations' }))
+      ;((invoicesRes.data as unknown as { id: string; invoice_number: number | null; clients: { name: string } | null }[]) ?? [])
+        .filter((inv) => {
+          const label = `inv-${String(inv.invoice_number ?? '').padStart(4, '0')} ${inv.clients?.name ?? ''}`.toLowerCase()
+          return label.includes(ql)
+        })
+        .slice(0, 4)
+        .forEach((inv) => results.push({
+          type: 'Invoice',
+          label: `INV-${String(inv.invoice_number ?? 0).padStart(4, '0')} · ${inv.clients?.name ?? ''}`,
+          href: '/invoices',
+        }))
+
+      if (!cancelled) setSearchResults(results)
+    }, 250)
+
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [searchQuery])
+
+  // Load notifications and subscribe to new ones in real time
+  useEffect(() => {
+    if (!businessId) return
+    let active = true
+
+    async function loadNotifications() {
+      const { data } = await supabase
+        .from('notifications')
+        .select('id, type, title, body, link, read_at, created_at')
+        .order('created_at', { ascending: false })
+        .limit(15)
+      if (active && data) setNotifications(data)
+    }
+    loadNotifications()
+
+    // Realtime: new notifications appear instantly, no refresh needed
+    const channel = supabase
+      .channel('notifications-feed')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `business_id=eq.${businessId}` },
+        (payload: { new: { id: string; type: string; title: string; body: string | null; link: string | null; read_at: string | null; created_at: string } }) => {
+          setNotifications((prev) => [payload.new, ...prev].slice(0, 15))
+        }
+      )
+      .subscribe()
+
+    return () => {
+      active = false
+      supabase.removeChannel(channel)
+    }
+  }, [businessId])
+
+  // Close search dropdown on outside click
+  useEffect(() => {
+    function handleSearchClick(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false)
+    }
+    document.addEventListener('mousedown', handleSearchClick)
+    return () => document.removeEventListener('mousedown', handleSearchClick)
+  }, [])
+
+  const unreadCount = notifications.filter((n) => !n.read_at).length
+
+  async function markAllRead() {
+    const unreadIds = notifications.filter((n) => !n.read_at).map((n) => n.id)
+    if (unreadIds.length === 0) return
+    setNotifications((prev) => prev.map((n) => n.read_at ? n : { ...n, read_at: new Date().toISOString() }))
+    await supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', unreadIds)
+  }
+
+  async function openNotification(n: { id: string; link: string | null; read_at: string | null }) {
+    setNotificationsOpen(false)
+    if (!n.read_at) {
+      setNotifications((prev) => prev.map((x) => x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x))
+      await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', n.id)
+    }
+    if (n.link) router.push(n.link)
+  }
+
+  function timeAgo(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return 'just now'
+    if (mins < 60) return `${mins}m ago`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ago`
+    return `${Math.floor(hrs / 24)}d ago`
+  }
+
+  function goToResult(href: string) {
+    setSearchOpen(false)
+    setSearchQuery('')
+    setSearchResults([])
+    router.push(href)
+  }
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -240,13 +368,37 @@ export default function Navigation() {
       {/* Right side */}
       <div className="flex items-center gap-2 shrink-0">
         {/* Search — desktop only */}
-        <div className="hidden lg:flex items-center gap-2 bg-[#1a3a24]/50 border border-[#1a3a24] rounded-lg px-3 py-2 w-56">
-          <Search size={14} className="text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search..."
-            className="bg-transparent text-sm text-gray-300 outline-none w-full placeholder-gray-500"
-          />
+        <div ref={searchRef} className="hidden lg:block relative">
+          <div className="flex items-center gap-2 bg-[#1a3a24]/50 border border-[#1a3a24] rounded-lg px-3 py-2 w-56">
+            <Search size={14} className="text-gray-500" />
+            <input
+              type="text"
+              placeholder="Search clients, invoices..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true) }}
+              onFocus={() => setSearchOpen(true)}
+              className="bg-transparent text-sm text-gray-300 outline-none w-full placeholder-gray-500"
+            />
+          </div>
+
+          {searchOpen && searchQuery.trim().length >= 2 && (
+            <div className="absolute right-0 top-11 w-72 bg-white rounded-xl border border-gray-100 shadow-lg z-50 overflow-hidden max-h-80 overflow-y-auto">
+              {searchResults.length === 0 ? (
+                <div className="px-4 py-6 text-center text-sm text-gray-400">No matches found</div>
+              ) : (
+                searchResults.map((r, i) => (
+                  <button
+                    key={i}
+                    onClick={() => goToResult(r.href)}
+                    className="flex items-center justify-between w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
+                  >
+                    <span className="text-sm text-gray-700 truncate">{r.label}</span>
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider shrink-0 ml-2">{r.type}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
         {/* Notifications */}
@@ -256,28 +408,52 @@ export default function Navigation() {
             className="p-2 rounded-lg hover:bg-[#1a3a24] text-gray-400 hover:text-white transition-colors relative"
           >
             <Bell size={18} />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-green-500 rounded-full" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-green-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
           </button>
 
           {notificationsOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setNotificationsOpen(false)} />
-              <div className="absolute right-0 top-11 w-72 bg-white rounded-xl border border-gray-100 shadow-lg z-50 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100">
-                  <p className="text-sm font-semibold text-gray-800">Notifications</p>
+              <div className="absolute right-0 top-11 w-80 bg-white rounded-xl border border-gray-100 shadow-lg z-50 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                  <p className="text-sm font-semibold text-gray-800">
+                    Notifications{unreadCount > 0 && <span className="text-gray-400 font-normal"> · {unreadCount} new</span>}
+                  </p>
+                  {unreadCount > 0 && (
+                    <button onClick={markAllRead} className="text-xs text-green-600 hover:underline font-medium">
+                      Mark all read
+                    </button>
+                  )}
                 </div>
-                <div className="divide-y divide-gray-50">
-                  <div className="px-4 py-3 hover:bg-gray-50 transition-colors">
-                    <p className="text-sm text-gray-700 font-medium">Welcome to Huve</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Your workspace is ready. Start by adding a client.</p>
-                  </div>
-                  <div className="px-4 py-3 hover:bg-gray-50 transition-colors">
-                    <p className="text-sm text-gray-700 font-medium">Security reminder</p>
-                    <p className="text-xs text-gray-400 mt-0.5">All data is encrypted and isolated to your business.</p>
-                  </div>
-                </div>
-                <div className="px-4 py-3 border-t border-gray-100">
-                  <p className="text-xs text-gray-400 text-center">More notifications coming soon</p>
+
+                <div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
+                  {notifications.length === 0 ? (
+                    <div className="px-4 py-8 text-center">
+                      <p className="text-sm text-gray-400">No notifications yet</p>
+                      <p className="text-xs text-gray-300 mt-1">You&apos;ll see payments, invoices, and team activity here.</p>
+                    </div>
+                  ) : (
+                    notifications.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => openNotification(n)}
+                        className={`block w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${!n.read_at ? 'bg-green-50/40' : ''}`}
+                      >
+                        <div className="flex items-start gap-2">
+                          {!n.read_at && <span className="w-1.5 h-1.5 bg-green-500 rounded-full mt-1.5 shrink-0" />}
+                          <div className={`min-w-0 ${n.read_at ? 'ml-3.5' : ''}`}>
+                            <p className="text-sm text-gray-700 font-medium truncate">{n.title}</p>
+                            {n.body && <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{n.body}</p>}
+                            <p className="text-[11px] text-gray-300 mt-1">{timeAgo(n.created_at)}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
             </>

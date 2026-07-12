@@ -7,6 +7,7 @@ import { logAction } from '@/lib/audit'
 import TopBar from '@/components/TopBar'
 import { CreditCard, CheckCircle, Plus, Download } from 'lucide-react'
 import { getSessionUser } from '@/lib/getSessionUser'
+import { notify } from '@/lib/notify'
 
 type Invoice = {
   id: string
@@ -94,7 +95,23 @@ export default function PaymentsPage() {
 
     const { data: { user } } = await supabase.auth.getUser()
     const { data: profile } = await supabase.from('profiles').select('business_id').eq('id', user!.id).single()
-    if (profile) await logAction({ businessId: profile.business_id, action: 'payment_recorded', tableName: 'payments', recordId: invoice.id })
+
+    if (profile) {
+      await logAction({
+        businessId: profile.business_id,
+        action: 'payment_recorded',
+        tableName: 'payments',
+        recordId: invoice.id,
+      })
+
+      await notify({
+        businessId: profile.business_id,
+        type: 'payment',
+        title: newStatus === 'paid' ? 'Invoice fully paid' : 'Payment recorded',
+        body: `NGN ${paymentAmount.toLocaleString()} received from ${invoice.clients?.name ?? 'a client'}`,
+        link: '/payments',
+      })
+    }
 
     setSubmitting(false)
     setRecordingFor(null)
@@ -115,7 +132,6 @@ export default function PaymentsPage() {
       const clientName = inv?.clients?.name ?? 'Unknown'
       const date = new Date(p.paid_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
       const methodLabel = methodLabels[p.method ?? ''] ?? p.method ?? ''
-      // Escape any commas/quotes in text fields
       const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`
       return [
         esc(date),
@@ -168,7 +184,6 @@ export default function PaymentsPage() {
             ))}
           </div>
         ) : invoices.length === 0 ? (
-          // Empty state
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
               <CreditCard size={28} className="text-gray-300" />
